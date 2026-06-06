@@ -1,0 +1,100 @@
+const express = require('express');
+const app = express();
+const db = require("./config/db");
+
+const cors = require('cors');
+app.use(cors());
+app.use(express.json());
+app.use('/uploads', express.static('uploads'));
+
+// ROTAS
+const userRoutes = require('./routes/userRoutes');
+const storeRoutes = require('./routes/storeRoutes');
+const productRoutes = require('./routes/productRoutes');
+const cartRoutes = require('./routes/cartRoutes');
+const categoryRoutes = require('./routes/categoryRoutes');
+const pedidoRoutes = require("./routes/pedidoRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
+const chatRoutes = require("./routes/chatRoutes");
+
+app.use('/api', userRoutes);
+app.use('/api', storeRoutes);
+app.use('/api', productRoutes);
+app.use('/api', cartRoutes);
+app.use('/api', categoryRoutes);
+app.use('/api', pedidoRoutes);
+app.use('/api', notificationRoutes);
+app.use('/api/chat', chatRoutes);
+
+app.get('/', (req, res) => {
+    res.send("Servidor funcionando!");
+});
+
+// HTTP + SOCKET
+const http = require("http");
+const server = http.createServer(app);
+
+const { Server } = require("socket.io");
+
+const io = new Server(server, {
+    cors: {
+        origin: "*"
+    }
+});
+
+// 🔥 IMPORTANTE: registrar IO no utils PRIMEIRO
+const socketUtil = require("./utils/socket");
+socketUtil.setIo(io);
+
+// SOCKET CONNECTION
+io.on("connection", (socket) => {
+
+    console.log("Cliente conectado:", socket.id);
+    console.log("USER SOCKET COUNT:", io.engine.clientsCount);
+    socket.on("disconnect", () => {
+    console.log("Cliente saiu:", socket.id);
+});
+
+    // usuário geral
+    socket.on("join", (userId) => {
+        socket.join(`user_${userId}`);
+    });
+
+    // loja geral
+    socket.on("join_loja", (userId) => {
+
+    db.query(
+        "SELECT id FROM stores WHERE user_id = ?",
+        [userId],
+        (err, result) => {
+
+            if (err) return;
+
+            if (result.length > 0) {
+                const lojaId = result[0].id;
+
+                socket.join(`loja_${lojaId}`);
+
+                console.log("Entrou na loja:", lojaId);
+            }
+        }
+    );
+});
+
+    // chat específico (CLIENTE + LOJA)
+    socket.on("entrar_chat", ({ chatId }) => {
+
+    socket.join(`chat_${chatId}`);
+
+    console.log(`💬 Entrou no chat: chat_${chatId}`);
+});
+
+socket.on("sair_chat", ({ chatId }) => {
+    socket.leave(`chat_${chatId}`);
+});
+
+});
+
+server.listen(3000, () => {
+    console.log("🚀 Servidor rodando na porta 3000");
+});
