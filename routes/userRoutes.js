@@ -6,47 +6,64 @@ const authMiddleware = require('../middlewares/authMiddleware');
 const upload = require('../middlewares/uploadLojas');
 const uploadPerfil = require('../middlewares/uploadPerfil');
 
-const SECRET = "segredo_super";
+const SECRET = process.env.JWT_SECRET;
 const bcrypt = require("bcrypt");
 
 // ===============================
 // CRIAR USUÁRIO TEMOS NO BANCO enum('cliente','lojista','funcionario','admin')
 // ===============================
-router.post('/users', (req, res) => {
+router.post('/users', async (req, res) => {
 
-    const { username, password } = req.body;
+    try {
 
-    const tipo = "cliente";
+        const { username, password } = req.body;
 
-    const sql = `
-        INSERT INTO users (username, password, tipo)
-        VALUES (?, ?, ?)
-    `;
+        const tipo = "cliente";
 
-    db.query(
-        sql,
-        [username, password, tipo],
-        (err) => {
+        const senhaHash = await bcrypt.hash(
+            password,
+            10
+        );
 
-            if (err) {
+        const sql = `
+            INSERT INTO users (username, password, tipo)
+            VALUES (?, ?, ?)
+        `;
 
-                console.log(err);
+        db.query(
+            sql,
+            [username, senhaHash, tipo],
+            (err) => {
 
-                return res
-                    .status(500)
-                    .json(err);
+                if (err) {
+
+                    console.log(err);
+
+                    return res
+                        .status(500)
+                        .json(err);
+
+                }
+
+                res.json({
+                    message: "Conta criada com sucesso!"
+                });
 
             }
+        );
 
-            res.json({
-                message:
-                    "Conta criada com sucesso!"
-            });
+    } catch (error) {
 
-        }
-    );
+        console.log(error);
+
+        return res.status(500).json({
+            error: "Erro interno do servidor"
+        });
+
+    }
 
 });
+
 
 
 // ===============================
@@ -149,7 +166,9 @@ router.get('/users', authMiddleware,  (req, res) => {
     db.query("SELECT * FROM users", (err, result) => {
 
         if (err) {
-            return res.status(500).json(err);
+            return res.status(500).json({
+    message: "Erro interno no servidor"
+});
         }
 
         res.json(result);

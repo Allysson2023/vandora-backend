@@ -17,7 +17,7 @@ function authMiddleware(req, res, next) {
 
         const decoded = jwt.verify(
             token,
-            "segredo_super"
+            process.env.JWT_SECRET
         );
 
         req.user = {

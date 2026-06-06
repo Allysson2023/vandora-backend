@@ -22,6 +22,16 @@ const pedidoRoutes = require("./routes/pedidoRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const chatRoutes = require("./routes/chatRoutes");
 
+const rateLimit = require("express-rate-limit");
+
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutos
+    max: 100, // máximo 100 requests
+    message: "Muitas requisições, tente novamente mais tarde"
+});
+
+
+app.use(limiter);
 app.use('/api', userRoutes);
 app.use('/api', storeRoutes);
 app.use('/api', productRoutes);
