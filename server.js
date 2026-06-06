@@ -1,10 +1,15 @@
+require('dotenv').config();
 const express = require('express');
 const app = express();
 const db = require("./config/db");
 
+const helmet = require('helmet');
 const cors = require('cors');
+
+app.use(helmet());
 app.use(cors());
 app.use(express.json());
+
 app.use('/uploads', express.static('uploads'));
 
 // ROTAS
@@ -95,6 +100,8 @@ socket.on("sair_chat", ({ chatId }) => {
 
 });
 
-server.listen(3000, () => {
-    console.log("🚀 Servidor rodando na porta 3000");
+const PORT = process.env.PORT || 3000;
+
+server.listen(PORT, () => {
+    console.log(`🚀 Servidor rodando na porta ${PORT}`);
 });
