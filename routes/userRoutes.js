@@ -5,14 +5,17 @@ const jwt = require('jsonwebtoken');
 const authMiddleware = require('../middlewares/authMiddleware');
 const upload = require('../middlewares/uploadLojas');
 const uploadPerfil = require('../middlewares/uploadPerfil');
-
+const {
+    loginLimiter,
+    registerLimiter
+} = require("../middlewares/rateLimiter");
 const SECRET = process.env.JWT_SECRET;
 const bcrypt = require("bcrypt");
 
 // ===============================
 // CRIAR USUÁRIO TEMOS NO BANCO enum('cliente','lojista','funcionario','admin')
 // ===============================
-router.post('/users', async (req, res) => {
+router.post('/users', registerLimiter ,async (req, res) => {
 
     try {
 
@@ -69,7 +72,7 @@ router.post('/users', async (req, res) => {
 // ===============================
 // LOGIN (CORRIGIDO)
 // ===============================
-router.post('/login', (req, res) => {
+router.post('/login',loginLimiter , (req, res) => {
 
     const { username, password } = req.body;
 

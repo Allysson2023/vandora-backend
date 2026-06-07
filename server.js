@@ -6,7 +6,13 @@ const db = require("./config/db");
 const helmet = require('helmet');
 const cors = require('cors');
 
-app.use(helmet());
+app.use(
+  helmet({
+    crossOriginResourcePolicy: {
+      policy: "cross-origin"
+    }
+  })
+);
 
 app.use(cors({
   origin: "http://localhost:5173",
@@ -36,7 +42,7 @@ const limiter = rateLimit({
 });
 
 
-app.use(limiter);
+//app.use(limiter);
 app.use('/api', userRoutes);
 app.use('/api', storeRoutes);
 app.use('/api', productRoutes);
