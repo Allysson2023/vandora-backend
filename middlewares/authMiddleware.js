@@ -10,7 +10,15 @@ function authMiddleware(req, res, next) {
         });
     }
 
-    const token = authHeader.split(" ")[1];
+    const partes = authHeader.split(" ");
+
+if (partes.length !== 2 || partes[0] !== "Bearer") {
+    return res.status(401).json({
+        message: "Token inválido"
+    });
+}
+
+const token = partes[1];
 
 
     try {
