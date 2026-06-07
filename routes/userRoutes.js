@@ -15,42 +15,77 @@ const bcrypt = require("bcrypt");
 // ===============================
 // CRIAR USUÁRIO TEMOS NO BANCO enum('cliente','lojista','funcionario','admin')
 // ===============================
-router.post('/users', registerLimiter ,async (req, res) => {
+router.post('/users', registerLimiter, async (req, res) => {
 
     try {
 
         const { username, password } = req.body;
 
-        const tipo = "cliente";
+        // Campos obrigatórios
+        if (!username || !password) {
+            return res.status(400).json({
+                error: "Usuário e senha são obrigatórios."
+            });
+        }
 
-        const senhaHash = await bcrypt.hash(
-            password,
-            10
-        );
+        // Remove espaços extras
+        const usernameLimpo = username.trim();
 
-        const sql = `
-            INSERT INTO users (username, password, tipo)
-            VALUES (?, ?, ?)
-        `;
+        // Tamanho mínimo do usuário
+        if (usernameLimpo.length < 4) {
+            return res.status(400).json({
+                error: "O usuário deve ter pelo menos 4 caracteres."
+            });
+        }
 
+        // Tamanho mínimo da senha
+        if (password.length < 6) {
+            return res.status(400).json({
+                error: "A senha deve ter pelo menos 6 caracteres."
+            });
+        }
+
+        // Verifica se já existe
         db.query(
-            sql,
-            [username, senhaHash, tipo],
-            (err) => {
+            "SELECT id FROM users WHERE username = ?",
+            [usernameLimpo],
+            async (err, result) => {
 
                 if (err) {
-
-                    console.log(err);
-
-                    return res
-                        .status(500)
-                        .json(err);
-
+                    return res.status(500).json(err);
                 }
 
-                res.json({
-                    message: "Conta criada com sucesso!"
-                });
+                if (result.length > 0) {
+                    return res.status(409).json({
+                        error: "Este usuário já existe."
+                    });
+                }
+
+                const senhaHash = await bcrypt.hash(password, 10);
+
+                db.query(
+                    `
+                    INSERT INTO users
+                    (username, password, tipo)
+                    VALUES (?, ?, ?)
+                    `,
+                    [
+                        usernameLimpo,
+                        senhaHash,
+                        "cliente"
+                    ],
+                    (err) => {
+
+                        if (err) {
+                            return res.status(500).json(err);
+                        }
+
+                        res.json({
+                            message: "Conta criada com sucesso!"
+                        });
+
+                    }
+                );
 
             }
         );
