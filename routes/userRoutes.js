@@ -21,6 +21,7 @@ router.post('/users', registerLimiter, async (req, res) => {
 
         const { username, password } = req.body;
 
+
         // Campos obrigatórios
         if (!username || !password) {
             return res.status(400).json({
@@ -30,6 +31,7 @@ router.post('/users', registerLimiter, async (req, res) => {
 
         // Remove espaços extras
         const usernameLimpo = username.trim();
+        const passwordLimpa = password.trim();
 
         // Tamanho mínimo do usuário
         if (usernameLimpo.length < 4) {
@@ -39,7 +41,7 @@ router.post('/users', registerLimiter, async (req, res) => {
         }
 
         // Tamanho mínimo da senha
-        if (password.length < 6) {
+        if (passwordLimpa.length < 6) {
             return res.status(400).json({
                 error: "A senha deve ter pelo menos 6 caracteres."
             });
@@ -52,7 +54,9 @@ router.post('/users', registerLimiter, async (req, res) => {
             async (err, result) => {
 
                 if (err) {
-                    return res.status(500).json(err);
+                    return res.status(500).json({
+    error: "Erro interno do servidor"
+});
                 }
 
                 if (result.length > 0) {
@@ -61,7 +65,7 @@ router.post('/users', registerLimiter, async (req, res) => {
                     });
                 }
 
-                const senhaHash = await bcrypt.hash(password, 10);
+                const senhaHash = await bcrypt.hash(passwordLimpa, 10);
 
                 db.query(
                     `
@@ -77,7 +81,9 @@ router.post('/users', registerLimiter, async (req, res) => {
                     (err) => {
 
                         if (err) {
-                            return res.status(500).json(err);
+                            return res.status(500).json({
+    error: "Erro interno do servidor"
+});
                         }
 
                         res.json({
@@ -129,7 +135,9 @@ router.post('/login',loginLimiter , (req, res) => {
 
         if (err) {
             console.log(err);
-            return res.status(500).json(err);
+            return res.status(500).json({
+    error: "Erro interno do servidor"
+});
         }
 
         if (result.length === 0) {
@@ -234,7 +242,9 @@ router.get('/users/:id', authMiddleware, (req, res) => {
     db.query(sql, [id], (err, result) => {
 
         if (err) {
-            return res.status(500).json(err);
+            return res.status(500).json({
+    error: "Erro interno do servidor"
+});
         }
 
         if (result.length === 0) {
@@ -381,7 +391,9 @@ router.put(
             db.query(sql, valores, (err) => {
 
                 if (err) {
-                    return res.status(500).json(err);
+                    return res.status(500).json({
+    error: "Erro interno do servidor"
+});
                 }
 
                 res.json({
@@ -427,7 +439,9 @@ router.get('/client-profile', authMiddleware, (req, res) => {
     db.query(sql, [userId], (err, result) => {
 
         if (err) {
-            return res.status(500).json(err);
+            return res.status(500).json({
+    error: "Erro interno do servidor"
+});
         }
 
         if (result.length === 0) {
@@ -466,7 +480,9 @@ router.get("/perfil-cliente/:id", (req, res) => {
 
         if (err) {
             console.log(err);
-            return res.status(500).json(err);
+            return res.status(500).json({
+    error: "Erro interno do servidor"
+});
         }
 
         if (result.length === 0) {
@@ -495,7 +511,9 @@ router.get("/perfil-cliente/:id/pedidos", (req, res) => {
 
         if (err) {
             console.log(err);
-            return res.status(500).json(err);
+            return res.status(500).json({
+    error: "Erro interno do servidor"
+});
         }
 
         res.json(result);
@@ -541,7 +559,9 @@ router.get('/profile', authMiddleware, (req, res) => {
     db.query(sql, [userId], (err, result) => {
 
         if (err) {
-            return res.status(500).json(err);
+            return res.status(500).json({
+    error: "Erro interno do servidor"
+});
         }
 
         res.json(result[0]);
@@ -570,7 +590,9 @@ router.put('/update-profile', authMiddleware, upload.single('imagem'), (req, res
     db.query(sqlUser, [username, userId], (err) => {
 
         if (err) {
-            return res.status(500).json(err);
+            return res.status(500).json({
+    error: "Erro interno do servidor"
+});
         }
 
         // verificar se loja existe
@@ -580,7 +602,10 @@ router.put('/update-profile', authMiddleware, upload.single('imagem'), (req, res
             (err2, result) => {
 
                 if (err2) {
-                    return res.status(500).json(err2);
+                console.log(err2);
+                    return res.status(500).json({
+    error: "Erro interno do servidor"
+});
                 }
 
                 // se não existe loja, cria
@@ -600,7 +625,11 @@ router.put('/update-profile', authMiddleware, upload.single('imagem'), (req, res
                     ], (err3) => {
 
                         if (err3) {
-                            return res.status(500).json(err3);
+                            console.log(err2);
+
+return res.status(500).json({
+    error: "Erro interno do servidor"
+});
                         }
 
                         return res.json({
