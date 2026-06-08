@@ -1,18 +1,36 @@
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 
 const storage = multer.diskStorage({
 
     destination: (req, file, cb) => {
-        cb(null, 'uploads/produtos');
-    },
 
-    filename: (req, file, cb) => {
-        cb(
-            null,
-            Date.now() + path.extname(file.originalname)
+    const pasta = "uploads/produtos";
+
+    if (!fs.existsSync(pasta)) {
+        fs.mkdirSync(
+            pasta,
+            { recursive: true }
         );
     }
+
+    cb(null, pasta);
+},
+
+    filename: (req, file, cb) => {
+
+    const unique =
+        Date.now() +
+        "-" +
+        Math.round(Math.random() * 1E9);
+
+    cb(
+        null,
+        unique +
+        path.extname(file.originalname)
+    );
+}
 
 });
 
@@ -38,7 +56,8 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
     storage,
     limits: {
-        fileSize: 5 * 1024 * 1024 // 5 MB
+        fileSize: 5 * 1024 * 1024, // 5 MB
+        files: 3
     },
     fileFilter
 });

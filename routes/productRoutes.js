@@ -25,6 +25,30 @@ router.post(
             categoria
         } = req.body;
 
+        if (!nome || nome.trim().length < 3) {
+    return res.status(400).json({
+        message: "Nome deve possuir pelo menos 3 caracteres"
+    });
+}
+
+if (!descricao || descricao.trim().length < 10) {
+    return res.status(400).json({
+        message: "Descrição muito curta"
+    });
+}
+
+if (Number(preco) <= 0) {
+    return res.status(400).json({
+        message: "Preço inválido"
+    });
+}
+
+if (Number(estoque) < 0) {
+    return res.status(400).json({
+        message: "Estoque inválido"
+    });
+}
+
         const imagem = req.files?.imagem
             ? req.files.imagem[0].filename
             : null;
@@ -45,7 +69,11 @@ router.post(
         db.query(sqlStore, [userId], (err, storeResult) => {
 
             if(err){
-                return res.status(500).json(err);
+                console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
             }
 
             if(storeResult.length === 0){
@@ -90,7 +118,11 @@ router.post(
                 (err, result) => {
 
                     if(err){
-                        return res.status(500).json(err);
+                        console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
                     }
 
                     res.json({
@@ -156,7 +188,11 @@ router.get('/products', (req, res) => {
 
     db.query(sql, values, (err, result) => {
         if (err) {
-            return res.status(500).json(err);
+            console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
         }
 
         res.json(result);
@@ -180,7 +216,11 @@ router.get('/products/:id', (req, res) => {
     db.query(sql, [productId], (err, result) => {
 
         if(err){
-            return res.status(500).json(err);
+            console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
         }
 
         if(result.length === 0){
@@ -218,7 +258,11 @@ router.get('/stores/:id/products', (req, res) => {
 
     db.query(sql, [storeId, limite, offset], (err, result) => {
         if (err) {
-            return res.status(500).json(err);
+            console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
         }
 
         res.json(result);
@@ -250,7 +294,11 @@ router.put(
     db.query(sqlCheck, [productId], (err, result) => {
 
       if (err) {
-        return res.status(500).json(err);
+        console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
       }
 
       if (result.length === 0) {
@@ -271,7 +319,11 @@ router.put(
       db.query(sqlOwner, [storeId], (err2, storeResult) => {
 
         if (err2) {
-          return res.status(500).json(err2);
+          console.error(err2);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
         }
 
         if (storeResult.length === 0) {
@@ -301,6 +353,30 @@ router.put(
           estoque,
           categoria
         } = req.body;
+
+        if (!nome || nome.trim().length < 3) {
+    return res.status(400).json({
+        message: "Nome inválido"
+    });
+}
+    if (!descricao || descricao.trim().length < 10) {
+    return res.status(400).json({
+        message: "Descrição muito curta"
+    });
+}
+
+if (Number(preco) <= 0) {
+    return res.status(400).json({
+        message: "Preço inválido"
+    });
+}
+
+if (Number(estoque) < 0) {
+    return res.status(400).json({
+        message: "Estoque inválido"
+    });
+}
+
 
         const clean = (value) => {
           if (
@@ -357,7 +433,11 @@ router.put(
           (err3) => {
 
             if (err3) {
-              return res.status(500).json(err3);
+              console.error(err3);
+
+        return res.status(500).json({
+            message: "Erro interno do servidor"
+        });
             }
 
             return res.json({
@@ -398,7 +478,11 @@ router.post('/products/:id/like', authMiddleware, (req, res) => {
                 });
             }
 
-            return res.status(500).json(err);
+            console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
         }
 
         res.json({
@@ -422,8 +506,11 @@ router.delete('/products/:id/like', authMiddleware, (req, res) => {
     db.query(sql, [userId, productId], (err) => {
 
         if (err) {
-            return res.status(500).json(err);
-        }
+            console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });        }
 
         res.json({
             message: "Like removido!"
@@ -446,8 +533,11 @@ router.get('/products/:id/likes', (req, res) => {
     db.query(sql, [productId], (err, result) => {
 
         if (err) {
-            return res.status(500).json(err);
-        }
+            console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });        }
 
         res.json({
             total: result[0].total
@@ -471,8 +561,11 @@ router.get('/products/:id/liked', authMiddleware, (req, res) => {
     db.query(sql, [userId, productId], (err, result) => {
 
         if (err) {
-            return res.status(500).json(err);
-        }
+            console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });        }
 
         res.json({
             liked: result.length > 0
