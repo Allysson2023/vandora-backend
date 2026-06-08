@@ -28,7 +28,13 @@ router.delete("/cart/clear", authMiddleware, (req, res) => {
 router.delete("/cart/delete/:id", authMiddleware, (req,res)=>{
 
   const userId = req.user.id;
-  const productId = req.params.id;
+  const productId = Number(req.params.id);
+
+  if (!Number.isInteger(productId) || productId <= 0) {
+    return res.status(400).json({
+      message: "ID inválido"
+    });
+  }
 
   const sql = `
     DELETE cart_items
@@ -37,17 +43,36 @@ router.delete("/cart/delete/:id", authMiddleware, (req,res)=>{
     WHERE cart.user_id = ? AND cart_items.product_id = ?
   `;
 
-  db.query(sql, [userId, productId], (err)=>{
-    if(err) return res.status(500).json(err);
-    res.json({message:"removido"});
-  });
+  db.query(sql, [userId, productId], (err, result) => {
+
+    if (err) {
+        return res.status(500).json(err);
+    }
+
+    if (result.affectedRows === 0) {
+        return res.status(404).json({
+            message: "Produto não encontrado no carrinho"
+        });
+    }
+
+    res.json({
+        message: "Removido"
+    });
+
+});
 
 });
 
 router.put("/cart/decrease/:id", authMiddleware, (req, res) => {
 
     const userId = req.user.id;
-    const productId = req.params.id;
+    const productId = Number(req.params.id);
+
+    if (!Number.isInteger(productId) || productId <= 0) {
+    return res.status(400).json({
+      message: "ID inválido"
+    });
+  }
 
     const getSql = `
         SELECT cart_items.id, cart_items.quantidade
@@ -92,11 +117,23 @@ router.put("/cart/decrease/:id", authMiddleware, (req, res) => {
                 WHERE cart.user_id = ? AND cart_items.product_id = ?
             `;
 
-            db.query(updateSql, [userId, productId], (err) => {
-                if (err) return res.status(500).json(err);
+            db.query(updateSql, [userId, productId], (err, result) => {
 
-                return res.json({ message: "Quantidade atualizada" });
-            });
+    if (err) {
+        return res.status(500).json(err);
+    }
+
+    if (result.affectedRows === 0) {
+        return res.status(404).json({
+            message: "Produto não encontrado"
+        });
+    }
+
+    res.json({
+        message: "Quantidade aumentada!"
+    });
+
+});
         }
     });
 });
@@ -104,7 +141,13 @@ router.put("/cart/decrease/:id", authMiddleware, (req, res) => {
 router.put("/cart/increase/:id", authMiddleware, (req, res) => {
 
     const userId = req.user.id;
-    const productId = req.params.id;
+    const productId = Number(req.params.id);
+
+    if (!Number.isInteger(productId) || productId <= 0) {
+    return res.status(400).json({
+      message: "ID inválido"
+    });
+  }
 
     // Busca item do carrinho + estoque do produto
     const sql = `
@@ -176,7 +219,24 @@ router.put("/cart/increase/:id", authMiddleware, (req, res) => {
 router.post('/cart', authMiddleware, (req, res) => {
 
     const userId = req.user.id;
-    const { product_id, quantidade } = req.body;
+    const product_id = Number(req.body.product_id);
+    const quantidade = Number(req.body.quantidade);
+
+    if (!Number.isInteger(product_id) || product_id <= 0) {
+    return res.status(400).json({
+        message: "ID do produto inválido"
+    });
+}
+
+    if (
+    !Number.isInteger(quantidade) ||
+    quantidade <= 0 ||
+    quantidade > 50
+) {
+    return res.status(400).json({
+        message: "Quantidade inválida"
+    });
+}
 
     // 1. buscar carrinho do usuário
     db.query("SELECT * FROM cart WHERE user_id = ?", [userId], (err, cartResult) => {
@@ -269,6 +329,12 @@ router.post('/cart', authMiddleware, (req, res) => {
                                 );
 
                             } else {
+
+                                if (quantidade > estoque) {
+        return res.status(400).json({
+            message: `Existem apenas ${estoque} unidades disponíveis de ${nomeProduto}`
+        });
+    }
 
                                 // ✔ inserir novo item
                                 const insertSql = `
