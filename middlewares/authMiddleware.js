@@ -37,6 +37,8 @@ const token = partes[1];
 
     } catch (err) {
 
+        console.error("Erro JWT:", err.message);
+
         return res.status(401).json({
             message: "Token inválido"
         });

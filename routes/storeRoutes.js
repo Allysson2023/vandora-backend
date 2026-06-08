@@ -368,8 +368,6 @@ FROM stores s
 
 
 
-
-
 // ===============================
 // LOJA PÚBLICA (CLIENTE)
 // ===============================
@@ -492,6 +490,35 @@ router.put('/stores/:id', authMiddleware, checkOwner, (req, res) => {
     instagram,
   meta_mensal
   } = req.body;
+
+  if (!nome || nome.trim().length < 3) {
+    return res.status(400).json({
+        message: "Nome inválido"
+    });
+}
+
+if (nome.length > 100) {
+    return res.status(400).json({
+        message: "Nome muito grande"
+    });
+}
+
+if (descricao && descricao.length > 3000) {
+    return res.status(400).json({
+        message: "Descrição muito grande"
+    });
+}
+
+if (
+  meta_mensal !== null &&
+  meta_mensal !== undefined &&
+  isNaN(meta_mensal)
+) {
+  return res.status(400).json({
+    message: "Meta inválida"
+  });
+}
+
 
   const sql = `
   UPDATE stores
@@ -688,13 +715,21 @@ const sqlUltimoPedido = `
     if (err) {
       console.log(err);
 
-      return res.status(500).json(err);
+      console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
     }db.query(sqlMetaMensal, [storeId], (err, metaResult) => {
 
     if (err) {
       console.log(err);
 
-      return res.status(500).json(err);
+      console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
     }
 
     db.query(sqlUltimosDias, [storeId], (err, vendasPorDia) => {
@@ -702,7 +737,11 @@ const sqlUltimoPedido = `
       if (err) {
         console.log(err);
 
-        return res.status(500).json(err);
+        console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
       }
 
       db.query(sqlHoje, [storeId], (err, hojeResult) => {
@@ -710,7 +749,11 @@ const sqlUltimoPedido = `
         if (err) {
           console.log(err);
 
-          return res.status(500).json(err);
+          console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
         }
 
         db.query(sqlMes, [storeId], (err, mesResult) => {
@@ -718,7 +761,11 @@ const sqlUltimoPedido = `
           if (err) {
             console.log(err);
 
-            return res.status(500).json(err);
+            console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
           }
 
           db.query(sqlAno, [storeId], (err, anoResult) => {
@@ -726,7 +773,11 @@ const sqlUltimoPedido = `
             if (err) {
               console.log(err);
 
-              return res.status(500).json(err);
+              console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
             }
 
             db.query(sqlTopProdutos, [storeId], (err, topProdutos) => {
@@ -734,14 +785,22 @@ const sqlUltimoPedido = `
               if (err) {
                 console.log(err);
 
-                return res.status(500).json(err);
+                console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
               }
 
               db.query(sqlMenosVendidos, [storeId], (err, menosVendidos) => {
                 if (err) {
                 console.log(err);
 
-                return res.status(500).json(err);
+                console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
               }
 
               db.query(sqlEstoque, [storeId], (err, estoqueBaixo) => {
@@ -749,7 +808,11 @@ const sqlUltimoPedido = `
                 if (err) {
                   console.log(err);
 
-                  return res.status(500).json(err);
+                  console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
                 }
 
                 db.query(sqlTotalProdutos, [storeId], (err, totalProdutosResult) => {
@@ -757,7 +820,11 @@ const sqlUltimoPedido = `
                   if (err) {
                     console.log(err);
 
-                    return res.status(500).json(err);
+                    console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
                   }
 
                   db.query(sqlTotalPedidos, [storeId], (err, totalPedidosResult) => {
@@ -765,7 +832,11 @@ const sqlUltimoPedido = `
   if (err) {
     console.log(err);
 
-    return res.status(500).json(err);
+    console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
   }
 
   // ÚLTIMO PEDIDO
@@ -774,7 +845,11 @@ const sqlUltimoPedido = `
     if (err) {
       console.log(err);
 
-      return res.status(500).json(err);
+      console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
     }
 
     res.json({
@@ -838,7 +913,11 @@ router.get('/stores/:id/estoque', authMiddleware, checkOwner, (req, res) => {
   db.query(sql, [storeId], (err, result) => {
 
     if (err) {
-      return res.status(500).json(err);
+      console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
     }
 
     res.json(result);
@@ -870,7 +949,11 @@ router.get('/stores/:id/mais-vendidos', authMiddleware, checkOwner, (req, res) =
   db.query(sql, [storeId], (err, result) => {
 
     if (err) {
-      return res.status(500).json(err);
+      console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
     }
 
     res.json(result);
@@ -899,7 +982,11 @@ router.get('/stores/:id/financeiro', authMiddleware, checkOwner, (req, res) => {
   db.query(sql, [storeId], (err, result) => {
 
     if (err) {
-      return res.status(500).json(err);
+      console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
     }
 
     res.json(result);
@@ -929,7 +1016,11 @@ router.get('/stores/:id/clientes', authMiddleware, checkOwner, (req, res) => {
   db.query(sql, [storeId], (err, result) => {
 
     if (err) {
-      return res.status(500).json(err);
+      console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
     }
 
     res.json(result);
@@ -1002,14 +1093,29 @@ ORDER BY s.id DESC
     `;
 
     db.query(sql, [funcionarioId], (err, result) => {
-      if (err) return res.status(500).json(err);
-      res.json(result);
+
+  if (err) {
+    console.error(err);
+
+    return res.status(500).json({
+      message: "Erro interno do servidor"
     });
+  }
+
+  res.json(result);
+
+});
 });
 
 router.get("/funcionario/loja-dashboard/:id", authMiddleware, (req, res) => {
 
-    const lojaId = req.params.id;
+    const lojaId = Number(req.params.id);
+
+if (!Number.isInteger(lojaId)) {
+    return res.status(400).json({
+        message: "ID inválido"
+    });
+}
 
     const sql = `
         SELECT
@@ -1055,14 +1161,19 @@ router.get("/funcionario/loja-dashboard/:id", authMiddleware, (req, res) => {
 
         FROM stores s
         WHERE s.id = ?
+        AND s.funcionario_id = ?
         LIMIT 1
     `;
 
-    db.query(sql, [lojaId], (err, result) => {
+    db.query(sql, [lojaId, req.user.id], (err, result) => {
 
         if (err) {
             console.log(err);
-            return res.status(500).json(err);
+            console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
         }
 
         res.json(result[0]);
@@ -1114,7 +1225,11 @@ router.get(
 
       if (err) {
         console.log(err);
-        return res.status(500).json(err);
+        console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
       }
 
       res.json(result);
@@ -1155,7 +1270,11 @@ router.get(
 
         if (err) {
           console.log(err);
-          return res.status(500).json(err);
+          console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
         }
 
         const dados = result[0];
@@ -1181,8 +1300,21 @@ router.get(
 );
 
 router.post("/avaliacao", authMiddleware, (req, res) => {
-console.log(req.body);
+    console.log(req.body);
+  
   const { pedido_id, loja_id, nota, comentario } = req.body;
+  
+  if (!Number.isInteger(Number(nota))) {
+    return res.status(400).json({
+        error: "Nota inválida"
+    });
+}
+
+if (nota < 1 || nota > 5) {
+    return res.status(400).json({
+        error: "Nota deve ser entre 1 e 5"
+    });
+}
 
   const cliente_id = req.user.id;
 
@@ -1269,7 +1401,11 @@ router.get(
     db.query(sql, [pedidoId], (err, result) => {
 
       if (err) {
-        return res.status(500).json(err);
+        console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
       }
 
       res.json({
@@ -1283,7 +1419,13 @@ router.get(
 
 router.get("/stores/:id/avaliacoes", (req, res) => {
 
-  const lojaId = req.params.id;
+  const lojaId = Number(req.params.id);
+
+if (!Number.isInteger(lojaId)) {
+    return res.status(400).json({
+        message: "ID inválido"
+    });
+}
 
   const sql = `
     SELECT
@@ -1313,7 +1455,13 @@ router.get("/stores/:id/avaliacoes", (req, res) => {
 
 router.get("/stores/:id/comentarios", (req, res) => {
 
-  const lojaId = req.params.id;
+  const lojaId = Number(req.params.id);
+
+if (!Number.isInteger(lojaId)) {
+    return res.status(400).json({
+        message: "ID inválido"
+    });
+}
 
   const sql = `
     SELECT
@@ -1374,7 +1522,11 @@ router.post(
         db.query(sql, [avaliacaoId], (err, result) => {
 
             if (err) {
-                return res.status(500).json(err);
+                console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
             }
 
             if (result.length === 0) {
@@ -1413,7 +1565,11 @@ router.post(
                 (err) => {
 
                     if (err) {
-                        return res.status(500).json(err);
+                        console.error(err);
+
+    return res.status(500).json({
+        message: "Erro interno do servidor"
+    });
                     }
 
                     res.json({
@@ -1430,7 +1586,13 @@ router.post(
 
 router.post("/stores/:id/favoritar", authMiddleware, async (req, res) => {
 
-    const lojaId = req.params.id;
+    const lojaId = Number(req.params.id);
+
+if (!Number.isInteger(lojaId)) {
+    return res.status(400).json({
+        message: "ID inválido"
+    });
+}
     const usuarioId = req.user.id;
 
     try {
@@ -1482,7 +1644,13 @@ router.post("/stores/:id/favoritar", authMiddleware, async (req, res) => {
 
 router.get("/stores/:id/favorito", authMiddleware, async (req, res) => {
 
-    const lojaId = req.params.id;
+    const lojaId = Number(req.params.id);
+
+if (!Number.isInteger(lojaId)) {
+    return res.status(400).json({
+        message: "ID inválido"
+    });
+}
     const usuarioId = req.user.id;
 
     try {
@@ -1510,7 +1678,13 @@ router.get("/stores/:id/favorito", authMiddleware, async (req, res) => {
 
 router.get("/stores/:id/total-favoritos", async (req, res) => {
 
-    const lojaId = req.params.id;
+    const lojaId = Number(req.params.id);
+
+if (!Number.isInteger(lojaId)) {
+    return res.status(400).json({
+        message: "ID inválido"
+    });
+}
 
     try {
 
