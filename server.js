@@ -33,6 +33,7 @@ const pedidoRoutes = require("./routes/pedidoRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const chatRoutes = require("./routes/chatRoutes");
 const adminRoutes = require("./routes/adminRoutes");
+const bannerRoutes = require('./routes/bannerRoutes');
 
 const rateLimit = require("express-rate-limit");
 
@@ -53,6 +54,7 @@ app.use('/api', pedidoRoutes);
 app.use('/api', notificationRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api', adminRoutes);
+app.use('/api', bannerRoutes);
 
 app.get('/', (req, res) => {
     res.send("Servidor funcionando!");

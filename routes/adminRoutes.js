@@ -6,11 +6,12 @@ const authMiddleware = require("../middlewares/authMiddleware");
 const adminMiddleware = require("../middlewares/adminMiddleware");
 
 router.post("/admin/users", authMiddleware, adminMiddleware, async (req, res) => {
-    // Recebe os dados exatamente como o formulário do React envia
-    const { email, senha, role } = req.body;
+    // 1. Adicionamos os novos campos na desestruturação
+    const { username, email, senha, role, telefone, data_nascimento } = req.body;
 
-    if (!email || !senha || !role) {
-        return res.status(400).json({ message: "Usuário/E-mail, senha e tipo são obrigatórios!" });
+    // 2. Atualizamos a validação dos campos obrigatórios (ajuste conforme sua necessidade)
+    if (!username || !email || !senha || !role) {
+        return res.status(400).json({ message: "Usuário, E-mail, senha e tipo são obrigatórios!" });
     }
 
     if (!['funcionario', 'lojista'].includes(role)) {
@@ -21,13 +22,16 @@ router.post("/admin/users", authMiddleware, adminMiddleware, async (req, res) =>
         const saltRounds = 10;
         const passwordHash = await bcrypt.hash(senha, saltRounds);
 
-        // Ajustado para usar as colunas reais do seu banco: username, password, tipo
+        // 3. Atualizamos o SQL para incluir as novas colunas
         const sql = `
-            INSERT INTO users (username, password, tipo) 
-            VALUES (?, ?, ?)
+            INSERT INTO users (username, password, tipo, email, telefone, data_nascimento) 
+            VALUES (?, ?, ?, ?, ?, ?)
         `;
 
-        db.query(sql, [email, passwordHash, role], (err, result) => {
+        // 4. Incluímos as variáveis no array de parâmetros
+        // Nota: se telefone ou data_nascimento não forem obrigatórios, 
+        // eles podem vir como null ou undefined do front-end.
+        db.query(sql, [username, passwordHash, role, email, telefone, data_nascimento || null], (err, result) => {
             if (err) {
                 console.error("Erro ao criar conta administrativa:", err);
                 if (err.code === 'ER_DUP_ENTRY') {
