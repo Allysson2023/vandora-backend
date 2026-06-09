@@ -559,6 +559,16 @@ if (
 
 
 
+
+
+
+
+
+
+
+
+
+
 // ===============================
 // DASHBOARD DA LOJA
 // ===============================
@@ -1182,6 +1192,23 @@ if (!Number.isInteger(lojaId)) {
 
 });
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 router.get(
   "/funcionario/top-lojas",
   authMiddleware,
@@ -1502,55 +1529,42 @@ router.post(
     "/avaliacoes/:id/responder",
     authMiddleware,
     (req, res) => {
-
         const avaliacaoId = req.params.id;
         const { resposta } = req.body;
-
         const userId = req.user.id;
+        const userTipo = req.user.tipo; // Pega o tipo do usuário (lojista/funcionario)
 
+        // Buscamos se a avaliação existe e quem é o dono da loja
         const sql = `
             SELECT
                 a.id,
                 a.resposta_loja,
-                s.user_id
+                s.user_id AS loja_lojista_id
             FROM avaliacoes a
-            JOIN stores s
-                ON s.id = a.loja_id
+            JOIN stores s ON s.id = a.loja_id
             WHERE a.id = ?
         `;
 
         db.query(sql, [avaliacaoId], (err, result) => {
-
             if (err) {
                 console.error(err);
-
-    return res.status(500).json({
-        message: "Erro interno do servidor"
-    });
+                return res.status(500).json({ message: "Erro interno do servidor" });
             }
 
             if (result.length === 0) {
-                return res.status(404).json({
-                    message: "Avaliação não encontrada"
-                });
+                return res.status(404).json({ message: "Avaliação não encontrada" });
             }
 
             const avaliacao = result[0];
 
-            // garante que é dono da loja
-
-            if (avaliacao.user_id !== userId) {
-                return res.status(403).json({
-                    message: "Sem permissão"
-                });
+            // GARANTIA DE SEGURANÇA: Só aceita se for o lojista dono DAQUELA loja ou um funcionário
+            if (userTipo !== 'funcionario' && avaliacao.loja_lojista_id !== userId) {
+                return res.status(403).json({ message: "Sem permissão. Você não é o dono desta loja." });
             }
 
             // impede responder duas vezes
-
             if (avaliacao.resposta_loja) {
-                return res.status(400).json({
-                    message: "Comentário já respondido"
-                });
+                return res.status(400).json({ message: "Comentário já respondido" });
             }
 
             db.query(
@@ -1563,24 +1577,14 @@ router.post(
                 `,
                 [resposta, avaliacaoId],
                 (err) => {
-
                     if (err) {
                         console.error(err);
-
-    return res.status(500).json({
-        message: "Erro interno do servidor"
-    });
+                        return res.status(500).json({ message: "Erro interno do servidor" });
                     }
-
-                    res.json({
-                        message: "Resposta enviada"
-                    });
-
+                    res.json({ message: "Resposta enviada" });
                 }
             );
-
         });
-
     }
 );
 

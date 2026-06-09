@@ -3,9 +3,10 @@ const router = express.Router();
 const db = require('../config/db');
 const authMiddleware = require('../middlewares/authMiddleware');
 
-
+// ==========================================
+// LIMPAR TODO O CARRINHO
+// ==========================================
 router.delete("/cart/clear", authMiddleware, (req, res) => {
-
     const userId = req.user.id;
 
     const sql = `
@@ -16,63 +17,56 @@ router.delete("/cart/clear", authMiddleware, (req, res) => {
     `;
 
     db.query(sql, [userId], (err) => {
-
-        if (err) return res.status(500).json(err);
-
+        if (err) {
+            console.error("Erro ao limpar carrinho:", err);
+            return res.status(500).json({ error: "Erro interno ao limpar o carrinho" });
+        }
         res.json({ message: "Carrinho limpo com sucesso!" });
-
     });
-
 });
 
-router.delete("/cart/delete/:id", authMiddleware, (req,res)=>{
-
-  const userId = req.user.id;
-  const productId = Number(req.params.id);
-
-  if (!Number.isInteger(productId) || productId <= 0) {
-    return res.status(400).json({
-      message: "ID inválido"
-    });
-  }
-
-  const sql = `
-    DELETE cart_items
-    FROM cart_items
-    JOIN cart ON cart.id = cart_items.cart_id
-    WHERE cart.user_id = ? AND cart_items.product_id = ?
-  `;
-
-  db.query(sql, [userId, productId], (err, result) => {
-
-    if (err) {
-        return res.status(500).json(err);
-    }
-
-    if (result.affectedRows === 0) {
-        return res.status(404).json({
-            message: "Produto não encontrado no carrinho"
-        });
-    }
-
-    res.json({
-        message: "Removido"
-    });
-
-});
-
-});
-
-router.put("/cart/decrease/:id", authMiddleware, (req, res) => {
-
+// ==========================================
+// REMOVER PRODUTO ESPECÍFICO DO CARRINHO
+// ==========================================
+router.delete("/cart/delete/:id", authMiddleware, (req, res) => {
     const userId = req.user.id;
     const productId = Number(req.params.id);
 
     if (!Number.isInteger(productId) || productId <= 0) {
-    return res.status(400).json({
-      message: "ID inválido"
+        return res.status(400).json({ message: "ID inválido" });
+    }
+
+    const sql = `
+        DELETE cart_items
+        FROM cart_items
+        JOIN cart ON cart.id = cart_items.cart_id
+        WHERE cart.user_id = ? AND cart_items.product_id = ?
+    `;
+
+    db.query(sql, [userId, productId], (err, result) => {
+        if (err) {
+            console.error("Erro ao remover item do carrinho:", err);
+            return res.status(500).json({ error: "Erro interno ao remover item" });
+        }
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: "Produto não encontrado no carrinho" });
+        }
+
+        res.json({ message: "Removido" });
     });
-  }
+});
+
+// ==========================================
+// DIMINUIR QUANTIDADE DE UM ITEM (-1)
+// ==========================================
+router.put("/cart/decrease/:id", authMiddleware, (req, res) => {
+    const userId = req.user.id;
+    const productId = Number(req.params.id);
+
+    if (!Number.isInteger(productId) || productId <= 0) {
+        return res.status(400).json({ message: "ID inválido" });
+    }
 
     const getSql = `
         SELECT cart_items.id, cart_items.quantidade
@@ -82,8 +76,10 @@ router.put("/cart/decrease/:id", authMiddleware, (req, res) => {
     `;
 
     db.query(getSql, [userId, productId], (err, result) => {
-
-        if (err) return res.status(500).json(err);
+        if (err) {
+            console.error("Erro ao buscar item para diminuir:", err);
+            return res.status(500).json({ error: "Erro interno ao processar alteração" });
+        }
 
         if (result.length === 0) {
             return res.status(404).json({ message: "Item não encontrado" });
@@ -91,9 +87,7 @@ router.put("/cart/decrease/:id", authMiddleware, (req, res) => {
 
         const item = result[0];
 
-        // 🔥 SE FOR 1, REMOVE
         if (item.quantidade <= 1) {
-
             const deleteSql = `
                 DELETE cart_items
                 FROM cart_items
@@ -102,14 +96,13 @@ router.put("/cart/decrease/:id", authMiddleware, (req, res) => {
             `;
 
             db.query(deleteSql, [userId, productId], (err) => {
-                if (err) return res.status(500).json(err);
-
+                if (err) {
+                    console.error("Erro ao deletar item com quantidade zerada:", err);
+                    return res.status(500).json({ error: "Erro interno ao remover item" });
+                }
                 return res.json({ message: "Item removido" });
             });
-
         } else {
-
-            // ➖ SE FOR MAIOR QUE 1, DIMINUI
             const updateSql = `
                 UPDATE cart_items
                 JOIN cart ON cart.id = cart_items.cart_id
@@ -118,38 +111,33 @@ router.put("/cart/decrease/:id", authMiddleware, (req, res) => {
             `;
 
             db.query(updateSql, [userId, productId], (err, result) => {
+                if (err) {
+                    console.error("Erro ao diminuir quantidade:", err);
+                    return res.status(500).json({ error: "Erro interno ao atualizar quantidade" });
+                }
 
-    if (err) {
-        return res.status(500).json(err);
-    }
+                if (result.affectedRows === 0) {
+                    return res.status(404).json({ message: "Produto não encontrado" });
+                }
 
-    if (result.affectedRows === 0) {
-        return res.status(404).json({
-            message: "Produto não encontrado"
-        });
-    }
-
-    res.json({
-        message: "Quantidade aumentada!"
-    });
-
-});
+                // CORRIGIDO: Mensagem correta para o front-end
+                res.json({ message: "Quantidade diminuída!" });
+            });
         }
     });
 });
 
+// ==========================================
+// AUMENTAR QUANTIDADE DE UM ITEM (+1)
+// ==========================================
 router.put("/cart/increase/:id", authMiddleware, (req, res) => {
-
     const userId = req.user.id;
     const productId = Number(req.params.id);
 
     if (!Number.isInteger(productId) || productId <= 0) {
-    return res.status(400).json({
-      message: "ID inválido"
-    });
-  }
+        return res.status(400).json({ message: "ID inválido" });
+    }
 
-    // Busca item do carrinho + estoque do produto
     const sql = `
         SELECT 
             cart_items.quantidade,
@@ -158,254 +146,189 @@ router.put("/cart/increase/:id", authMiddleware, (req, res) => {
         FROM cart_items
         JOIN cart ON cart.id = cart_items.cart_id
         JOIN products ON products.id = cart_items.product_id
-        WHERE cart.user_id = ? 
-        AND cart_items.product_id = ?
+        WHERE cart.user_id = ? AND cart_items.product_id = ?
     `;
 
     db.query(sql, [userId, productId], (err, result) => {
-
-        if (err) return res.status(500).json(err);
+        if (err) {
+            console.error("Erro ao verificar estoque para aumento:", err);
+            return res.status(500).json({ error: "Erro interno ao processar aumento" });
+        }
 
         if (result.length === 0) {
-            return res.status(404).json({
-                message: "Produto não encontrado no carrinho"
-            });
+            return res.status(404).json({ message: "Produto não encontrado no carrinho" });
         }
 
         const item = result[0];
+        if (item.estoque <= 0) {
+            return res.status(400).json({ message: `${item.nome} está indisponível no momento` });
+        }
 
-        const quantidadeAtual = item.quantidade;
-        const estoque = item.estoque;
-        const nomeProduto = item.nome;
-
-        // 🔥 Produto indisponível
-        if (estoque <= 0) {
+        if (item.quantidade >= item.estoque) {
             return res.status(400).json({
-                message: `${nomeProduto} está indisponível no momento`
+                message: `Quantidade indisponível. Existem apenas ${item.estoque} unidades disponíveis. Fale com a loja para saber quando haverá reposição.`
             });
         }
 
-        // 🔥 Limite atingido
-        if (quantidadeAtual >= estoque) {
-
-            return res.status(400).json({
-                message:
-                    `Quantidade indisponível. Existem apenas ${estoque} unidades disponíveis. Fale com a loja para saber quando haverá reposição.`
-            });
-        }
-
-        // ✅ Pode aumentar
         const updateSql = `
             UPDATE cart_items 
             JOIN cart ON cart.id = cart_items.cart_id
             SET quantidade = quantidade + 1
-            WHERE cart.user_id = ? 
-            AND cart_items.product_id = ?
+            WHERE cart.user_id = ? AND cart_items.product_id = ?
         `;
 
         db.query(updateSql, [userId, productId], (err) => {
-
-            if (err) return res.status(500).json(err);
-
-            res.json({
-                message: "Quantidade aumentada!"
-            });
+            if (err) {
+                console.error("Erro ao executar aumento de item:", err);
+                return res.status(500).json({ error: "Erro interno ao atualizar quantidade" });
+            }
+            res.json({ message: "Quantidade aumentada!" });
         });
-
     });
-
 });
 
+// ==========================================
+// ADICIONAR ITEM AO CARRINHO (OU SOMAR QUANTIDADE)
+// ==========================================
 router.post('/cart', authMiddleware, (req, res) => {
-
     const userId = req.user.id;
     const product_id = Number(req.body.product_id);
     const quantidade = Number(req.body.quantidade);
 
     if (!Number.isInteger(product_id) || product_id <= 0) {
-    return res.status(400).json({
-        message: "ID do produto inválido"
-    });
-}
+        return res.status(400).json({ message: "ID do produto inválido" });
+    }
 
-    if (
-    !Number.isInteger(quantidade) ||
-    quantidade <= 0 ||
-    quantidade > 50
-) {
-    return res.status(400).json({
-        message: "Quantidade inválida"
-    });
-}
+    if (!Number.isInteger(quantidade) || quantidade <= 0 || quantidade > 50) {
+        return res.status(400).json({ message: "Quantidade inválida" });
+    }
 
-    // 1. buscar carrinho do usuário
     db.query("SELECT * FROM cart WHERE user_id = ?", [userId], (err, cartResult) => {
-
-        if (err) return res.status(500).json(err);
+        if (err) {
+            console.error("Erro ao buscar carrinho:", err);
+            return res.status(500).json({ error: "Erro interno ao processar carrinho" });
+        }
 
         const processCart = (cartId) => {
+            db.query("SELECT store_id, estoque, nome FROM products WHERE id = ?", [product_id], (err, productResult) => {
+                if (err) {
+                    console.error("Erro ao buscar produto para o carrinho:", err);
+                    return res.status(500).json({ error: "Erro interno ao processar produto" });
+                }
 
-            // 2. pegar loja do produto novo
-            db.query(
-                "SELECT store_id, estoque, nome FROM products WHERE id = ?",
-                [product_id],
-                (err, productResult) => {
+                if (productResult.length === 0) {
+                    return res.status(404).json({ message: "Produto não encontrado" });
+                }
 
-                    if (err) return res.status(500).json(err);
+                const { store_id: lojaNova, estoque, nome: nomeProduto } = productResult[0];
 
-                    if (productResult.length === 0) {
-                        return res.status(404).json({
-                            message: "Produto não encontrado"
+                const sqlLojaAtual = `
+                    SELECT products.store_id
+                    FROM cart_items
+                    JOIN cart ON cart.id = cart_items.cart_id
+                    JOIN products ON products.id = cart_items.product_id
+                    WHERE cart.user_id = ? LIMIT 1
+                `;
+
+                db.query(sqlLojaAtual, [userId], (err, lojaResult) => {
+                    if (err) {
+                        console.error("Erro ao validar loja atual do carrinho:", err);
+                        return res.status(500).json({ error: "Erro interno de validação" });
+                    }
+
+                    const lojaAtual = lojaResult[0]?.store_id;
+
+                    if (lojaAtual && lojaAtual !== lojaNova) {
+                        return res.status(400).json({
+                            message: "Você só pode adicionar produtos de uma loja por vez no carrinho"
                         });
                     }
 
-                    const lojaNova = productResult[0].store_id;
-                    const estoque = productResult[0].estoque;
-                    const nomeProduto = productResult[0].nome;
-
-                    // 3. pegar loja atual do carrinho
-                    const sqlLojaAtual = `
-                        SELECT products.store_id
-                        FROM cart_items
-                        JOIN cart ON cart.id = cart_items.cart_id
-                        JOIN products ON products.id = cart_items.product_id
-                        WHERE cart.user_id = ?
-                        LIMIT 1
-                    `;
-
-                    db.query(sqlLojaAtual, [userId], (err, lojaResult) => {
-
-                        if (err) return res.status(500).json(err);
-
-                        const lojaAtual = lojaResult[0]?.store_id;
-
-                        // 🚨 BLOQUEIO DE LOJA DIFERENTE
-                        if (lojaAtual && lojaAtual !== lojaNova) {
-                            return res.status(400).json({
-                                message: "Você só pode adicionar produtos de uma loja por vez no carrinho"
-                            });
+                    const checkSql = "SELECT * FROM cart_items WHERE cart_id = ? AND product_id = ?";
+                    db.query(checkSql, [cartId, product_id], (err, result) => {
+                        if (err) {
+                            console.error("Erro ao verificar duplicidade no carrinho:", err);
+                            return res.status(500).json({ error: "Erro interno ao verificar itens" });
                         }
 
-                        // 4. continuar fluxo normal
+                        if (result.length > 0) {
+                            const quantidadeAtual = result[0].quantidade;
 
-                        const checkSql = `
-                            SELECT * FROM cart_items 
-                            WHERE cart_id = ? AND product_id = ?
-                        `;
-
-                        db.query(checkSql, [cartId, product_id], (err, result) => {
-
-                            if (err) return res.status(500).json(err);
-
-                            if (result.length > 0) {
-
-                                const quantidadeAtual = result[0].quantidade;
-
-                                // 🚨 ESTOQUE
-                                if ((quantidadeAtual + quantidade) > estoque) {
-                                    return res.status(400).json({
-                                        message: `Quantidade indisponível. Existem apenas ${estoque} unidades de ${nomeProduto}`
-                                    });
-                                }
-
-                                // ✔ atualizar quantidade
-                                const updateSql = `
-                                    UPDATE cart_items 
-                                    SET quantidade = quantidade + ?
-                                    WHERE cart_id = ? AND product_id = ?
-                                `;
-
-                                db.query(
-                                    updateSql,
-                                    [quantidade, cartId, product_id],
-                                    (err) => {
-
-                                        if (err) return res.status(500).json(err);
-
-                                        return res.json({
-                                            message: "Quantidade atualizada!"
-                                        });
-                                    }
-                                );
-
-                            } else {
-
-                                if (quantidade > estoque) {
-        return res.status(400).json({
-            message: `Existem apenas ${estoque} unidades disponíveis de ${nomeProduto}`
-        });
-    }
-
-                                // ✔ inserir novo item
-                                const insertSql = `
-                                    INSERT INTO cart_items (cart_id, product_id, quantidade)
-                                    VALUES (?, ?, ?)
-                                `;
-
-                                db.query(
-                                    insertSql,
-                                    [cartId, product_id, quantidade],
-                                    (err) => {
-
-                                        if (err) return res.status(500).json(err);
-
-                                        return res.json({
-                                            message: "Produto adicionado!"
-                                        });
-                                    }
-                                );
+                            if ((quantidadeAtual + quantidade) > estoque) {
+                                return res.status(400).json({
+                                    message: `Quantidade indisponível. Existem apenas ${estoque} unidades de ${nomeProduto}`
+                                });
                             }
-                        });
 
+                            const updateSql = "UPDATE cart_items SET quantidade = quantidade + ? WHERE cart_id = ? AND product_id = ?";
+                            db.query(updateSql, [quantidade, cartId, product_id], (err) => {
+                                if (err) {
+                                    console.error("Erro ao atualizar somatório do carrinho:", err);
+                                    return res.status(500).json({ error: "Erro interno ao atualizar item" });
+                                }
+                                return res.json({ message: "Quantidade atualizada!" });
+                            });
+                        } else {
+                            if (quantidade > estoque) {
+                                return res.status(400).json({
+                                    message: `Existem apenas ${estoque} unidades disponíveis de ${nomeProduto}`
+                                });
+                            }
+
+                            const insertSql = "INSERT INTO cart_items (cart_id, product_id, quantidade) VALUES (?, ?, ?)";
+                            db.query(insertSql, [cartId, product_id, quantidade], (err) => {
+                                if (err) {
+                                    console.error("Erro ao inserir novo item no carrinho:", err);
+                                    return res.status(500).json({ error: "Erro interno ao adicionar produto" });
+                                }
+                                return res.json({ message: "Produto adicionado!" });
+                            });
+                        }
                     });
-
-                }
-            );
+                });
+            });
         };
 
-        // se não tem carrinho, cria
         if (cartResult.length === 0) {
-
-            db.query(
-                "INSERT INTO cart (user_id) VALUES (?)",
-                [userId],
-                (err, result) => {
-
-                    if (err) return res.status(500).json(err);
-
-                    processCart(result.insertId);
+            db.query("INSERT INTO cart (user_id) VALUES (?)", [userId], (err, result) => {
+                if (err) {
+                    console.error("Erro ao criar carrinho inicial:", err);
+                    return res.status(500).json({ error: "Erro interno ao inicializar carrinho" });
                 }
-            );
-
+                processCart(result.insertId);
+            });
         } else {
-
             processCart(cartResult[0].id);
         }
-
     });
 });
 
-router.get('/cart', authMiddleware, (req, res) =>{
+// ==========================================
+// VER ITENS DO CARRINHO DO USUÁRIO LOGADO
+// ==========================================
+router.get('/cart', authMiddleware, (req, res) => {
     const userId = req.user.id;
 
     const sql = `
-    SELECT 
-    cart_items.product_id,
-    products.nome,
-    products.preco,
-    products.imagem,
-    cart_items.quantidade,
-    products.estoque,
-    products.store_id
-FROM cart_items
-JOIN cart ON cart.id = cart_items.cart_id
-JOIN products ON products.id = cart_items.product_id
-WHERE cart.user_id = ?
-`;
-    
-    db.query(sql, [userId], (err, result) => {
-        if (err) return res.status(500).json(err);
+        SELECT 
+            cart_items.product_id,
+            products.nome,
+            products.preco,
+            products.imagem,
+            cart_items.quantidade,
+            products.estoque,
+            products.store_id
+        FROM cart_items
+        JOIN cart ON cart.id = cart_items.cart_id
+        JOIN products ON products.id = cart_items.product_id
+        WHERE cart.user_id = ?
+    `;
 
+    db.query(sql, [userId], (err, result) => {
+        if (err) {
+            console.error("Erro ao listar itens do carrinho:", err);
+            return res.status(500).json({ error: "Erro interno ao carregar carrinho" });
+        }
         res.json(result);
     });
 });

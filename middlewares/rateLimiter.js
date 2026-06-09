@@ -10,7 +10,7 @@ const loginLimiter = rateLimit({
 
 const registerLimiter = rateLimit({
     windowMs: 60 * 60 * 1000,
-    max: 10,
+    max: 30,
     message: {
         error: "Muitas tentativas de cadastro. Tente novamente mais tarde."
     }

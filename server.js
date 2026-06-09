@@ -32,6 +32,7 @@ const categoryRoutes = require('./routes/categoryRoutes');
 const pedidoRoutes = require("./routes/pedidoRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const chatRoutes = require("./routes/chatRoutes");
+const adminRoutes = require("./routes/adminRoutes");
 
 const rateLimit = require("express-rate-limit");
 
@@ -51,6 +52,7 @@ app.use('/api', categoryRoutes);
 app.use('/api', pedidoRoutes);
 app.use('/api', notificationRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api', adminRoutes);
 
 app.get('/', (req, res) => {
     res.send("Servidor funcionando!");
