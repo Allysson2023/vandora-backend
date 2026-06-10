@@ -4,9 +4,9 @@ const multer = require('multer');
 const path = require('path');
 const db = require('../config/db');
 const authMiddleware = require("../middlewares/authMiddleware");
-const sharp = require('sharp'); // Importe no topo
+const sharp = require('sharp');
 
-// Configuração do Multer para Banners
+// Configuração do Multer
 const storage = multer.diskStorage({
   destination: './uploads/banners/',
   filename: (req, file, cb) => {
@@ -14,11 +14,9 @@ const storage = multer.diskStorage({
   }
 });
 
-// Ajuste no seu upload do multer no backend:
 const upload = multer({ 
   storage,
   fileFilter: (req, file, cb) => {
-    // Aceita imagens OU vídeos mp4
     if (file.mimetype.startsWith('image/') || file.mimetype === 'video/mp4') {
       cb(null, true);
     } else {
@@ -27,15 +25,16 @@ const upload = multer({
   }
 });
 
-// Rota para listar (pode acessar sem estar logado)
-router.get('/banners', (req, res) => {
-  db.query('SELECT * FROM banners', (err, results) => {
+// Rota para listar APENAS os banners do funcionário logado
+router.get('/banners', authMiddleware, (req, res) => {
+  const funcionario_id = req.user.id;
+  db.query('SELECT * FROM banners WHERE funcionario_id = ?', [funcionario_id], (err, results) => {
     if (err) return res.status(500).json(err);
     res.json(results);
   });
 });
 
-// Adicione esta rota no seu backend para que o Home.jsx consiga buscar apenas as imagens
+// Rotas Públicas (Home)
 router.get('/banners/imagens', (req, res) => {
   db.query("SELECT * FROM banners WHERE tipo = 'imagem'", (err, results) => {
     if (err) return res.status(500).json(err);
@@ -43,18 +42,16 @@ router.get('/banners/imagens', (req, res) => {
   });
 });
 
-
-// Rota para o vídeo destaque
 router.get('/banners/video', (req, res) => {
-  // Removi o LIMIT 1 para vir a lista completa
   db.query("SELECT * FROM banners WHERE tipo = 'video'", (err, results) => {
     if (err) return res.status(500).json(err);
-    res.json(results || []); // Retorna o array ou um array vazio
+    res.json(results || []);
   });
 });
 
+// Rota de Cadastro
 router.post('/banners', authMiddleware, upload.single('imagem'), async (req, res) => {
-  const { titulo, link_destino, tipo } = req.body; // Recebe o 'tipo' do front
+  const { titulo, link_destino, tipo } = req.body;
   if (!req.file) return res.status(400).json({ error: "Arquivo é obrigatório" });
   
   const funcionario_id = req.user.id; 
@@ -62,52 +59,52 @@ router.post('/banners', authMiddleware, upload.single('imagem'), async (req, res
 
   try {
     let nomeArquivoFinal = req.file.filename;
+    const fs = require('fs');
 
-    // SÓ processa com Sharp se for IMAGEM
+    // SÓ processa com Sharp se for IMAGEM e existir o arquivo
     if (req.file.mimetype.startsWith('image/')) {
-      nomeArquivoFinal = `resized-${req.file.filename}`;
-      const fs = require('fs');
+      const caminhoDestino = path.join(__dirname, '../uploads/banners/', `resized-${req.file.filename}`);
       
       await sharp(req.file.path)
         .resize(1200, 300)
-        .toFile(`./uploads/banners/${nomeArquivoFinal}`);
+        .toFile(caminhoDestino); // Use o caminho completo aqui
       
-      fs.unlinkSync(req.file.path); // Apaga o original não redimensionado
+      nomeArquivoFinal = `resized-${req.file.filename}`;
     }
-    // Se for vídeo, ele mantém o arquivo original intacto na pasta
 
-    // SALVA NO BANCO (Incluindo a coluna 'tipo')
     const sql = 'INSERT INTO banners (imagem, titulo, link_destino, funcionario_id, nome_funcionario, tipo) VALUES (?, ?, ?, ?, ?, ?)';
     db.query(sql, [nomeArquivoFinal, titulo, link_destino, funcionario_id, nome_funcionario, tipo], (err) => {
-      if (err) return res.status(500).json(err);
+      if (err) return res.status(500).json({ error: "Erro ao salvar no banco", details: err });
       res.json({ message: "Banner/Vídeo cadastrado com sucesso!" });
     });
     
   } catch (error) {
-    res.status(500).json({ error: "Erro ao processar arquivo", details: error });
+    console.error("Erro no Sharp:", error); // ISSO VAI MOSTRAR O ERRO NO SEU TERMINAL DO VSCODE
+    res.status(500).json({ error: "Erro ao processar arquivo", details: error.message });
   }
 });
 
-// Rota para deletar
+// Rota de Deletar (SEGURA E ÚNICA)
 router.delete('/banners/:id', authMiddleware, (req, res) => {
   const fs = require('fs');
-  
-  // 1. Busca o nome do arquivo antes de deletar o registro
-  db.query('SELECT imagem FROM banners WHERE id = ?', [req.params.id], (err, results) => {
+  const funcionario_id = req.user.id; 
+  const banner_id = req.params.id;
+
+  db.query('SELECT imagem, funcionario_id FROM banners WHERE id = ?', [banner_id], (err, results) => {
     if (err || results.length === 0) return res.status(404).json({ error: "Banner não encontrado" });
+    
+    if (results[0].funcionario_id !== funcionario_id) {
+      return res.status(403).json({ error: "Você não tem permissão para excluir este banner" });
+    }
 
     const nomeImagem = results[0].imagem;
-    
-    // 2. Deleta o registro no banco
-    db.query('DELETE FROM banners WHERE id = ?', [req.params.id], (err) => {
+    db.query('DELETE FROM banners WHERE id = ?', [banner_id], (err) => {
       if (err) return res.status(500).json(err);
       
-      // 3. Deleta o arquivo da pasta
       const caminhoArquivo = path.join(__dirname, '../uploads/banners/', nomeImagem);
       if (fs.existsSync(caminhoArquivo)) {
         fs.unlinkSync(caminhoArquivo);
       }
-      
       res.json({ message: "Banner e arquivo deletados com sucesso!" });
     });
   });
