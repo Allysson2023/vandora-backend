@@ -365,26 +365,29 @@ router.post('/calcular-frete', async (req, res) => {
     }
 
     try {
-        // Usando o geocoder que você já tinha configurado no topo
-        const resLoja = await geocoder.geocode(`${cepLoja}, Brasil`);
-        const resCliente = await geocoder.geocode(`${cepCliente}, Brasil`);
+        // Usamos o ViaCEP, que é o mais estável do Brasil
+        const { data: dadosLoja } = await axios.get(`https://viacep.com.br/ws/${cepLoja}/json/`);
+        const { data: dadosCliente } = await axios.get(`https://viacep.com.br/ws/${cepCliente}/json/`);
 
-        if (resLoja.length === 0 || resCliente.length === 0) {
-            throw new Error("Não foi possível encontrar as coordenadas para os CEPs informados.");
+        if (dadosCliente.erro) {
+            return res.status(400).json({ message: "CEP do cliente não encontrado." });
         }
 
-        const coord1 = { latitude: resLoja[0].latitude, longitude: resLoja[0].longitude };
-        const coord2 = { latitude: resCliente[0].latitude, longitude: resCliente[0].longitude };
+        // Se for o mesmo bairro, taxa fixa. Se for cidade diferente, aumenta.
+        // Isso resolve o problema de falta de lat/long e é muito mais rápido.
+        let taxa = 5.00; // Taxa base
+        if (dadosLoja.bairro !== dadosCliente.bairro) {
+            taxa = 12.00;
+        }
+        if (dadosLoja.localidade !== dadosCliente.localidade) {
+            taxa = 25.00;
+        }
 
-        const kmReal = (calcularDistancia(coord1, coord2) * 1.4).toFixed(1);
-        const taxa = (kmReal * 1.50).toFixed(2);
-
-        res.json({ taxa: Number(taxa), km: kmReal });
+        res.json({ taxa: taxa, km: "Estimativa baseada em bairro" });
 
     } catch (err) {
-        console.error("Erro no Geocoder:", err.message);
-        res.status(400).json({ message: "Erro ao converter CEP para localização. Tente outro CEP." });
+        console.error("Erro no ViaCEP:", err.message);
+        res.status(500).json({ message: "Erro ao consultar o frete." });
     }
 });
-
 module.exports = router;
