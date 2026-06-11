@@ -26,88 +26,89 @@ const upload = multer({
 });
 
 // Rota para listar APENAS os banners do funcionário logado
-router.get('/banners', authMiddleware, (req, res) => {
-  const funcionario_id = req.user.id;
-  db.query('SELECT * FROM banners WHERE funcionario_id = ?', [funcionario_id], (err, results) => {
-    if (err) return res.status(500).json(err);
-    res.json(results);
-  });
+router.get('/banners', authMiddleware, async (req, res) => {
+    try {
+        const funcionario_id = req.user.id;
+        const [results] = await db.query('SELECT * FROM banners WHERE funcionario_id = ?', [funcionario_id]);
+        res.json(results);
+    } catch (err) {
+        res.status(500).json({ error: "Erro ao buscar banners", details: err });
+    }
 });
 
 // Rotas Públicas (Home)
-router.get('/banners/imagens', (req, res) => {
-  db.query("SELECT * FROM banners WHERE tipo = 'imagem'", (err, results) => {
-    if (err) return res.status(500).json(err);
-    res.json(results);
-  });
+router.get('/banners/imagens', async (req, res) => {
+    try {
+        const [results] = await db.query("SELECT * FROM banners WHERE tipo = 'imagem'");
+        res.json(results);
+    } catch (err) {
+        res.status(500).json({ error: "Erro ao buscar imagens", details: err });
+    }
 });
 
-router.get('/banners/video', (req, res) => {
-  db.query("SELECT * FROM banners WHERE tipo = 'video'", (err, results) => {
-    if (err) return res.status(500).json(err);
-    res.json(results || []);
-  });
+router.get('/banners/video', async (req, res) => {
+    try {
+        const [results] = await db.query("SELECT * FROM banners WHERE tipo = 'video'");
+        res.json(results || []);
+    } catch (err) {
+        res.status(500).json({ error: "Erro ao buscar vídeos", details: err });
+    }
 });
 
 // Rota de Cadastro
 router.post('/banners', authMiddleware, upload.single('imagem'), async (req, res) => {
-  const { titulo, link_destino, tipo } = req.body;
-  if (!req.file) return res.status(400).json({ error: "Arquivo é obrigatório" });
-  
-  const funcionario_id = req.user.id; 
-  const nome_funcionario = req.user.username;
+    const { titulo, link_destino, tipo } = req.body;
+    if (!req.file) return res.status(400).json({ error: "Arquivo é obrigatório" });
 
-  try {
-    let nomeArquivoFinal = req.file.filename;
-    const fs = require('fs');
+    const funcionario_id = req.user.id;
+    const nome_funcionario = req.user.username;
 
-    // SÓ processa com Sharp se for IMAGEM e existir o arquivo
-    if (req.file.mimetype.startsWith('image/')) {
-      const caminhoDestino = path.join(__dirname, '../uploads/banners/', `resized-${req.file.filename}`);
-      
-      await sharp(req.file.path)
-        .resize(1200, 300)
-        .toFile(caminhoDestino); // Use o caminho completo aqui
-      
-      nomeArquivoFinal = `resized-${req.file.filename}`;
+    try {
+        let nomeArquivoFinal = req.file.filename;
+
+        if (req.file.mimetype.startsWith('image/')) {
+            const sharp = require('sharp');
+            const caminhoDestino = path.join(__dirname, '../uploads/banners/', `resized-${req.file.filename}`);
+            await sharp(req.file.path).resize(1200, 300).toFile(caminhoDestino);
+            nomeArquivoFinal = `resized-${req.file.filename}`;
+        }
+
+        const sql = 'INSERT INTO banners (imagem, titulo, link_destino, funcionario_id, nome_funcionario, tipo) VALUES (?, ?, ?, ?, ?, ?)';
+        await db.query(sql, [nomeArquivoFinal, titulo, link_destino, funcionario_id, nome_funcionario, tipo]);
+        
+        res.json({ message: "Banner/Vídeo cadastrado com sucesso!" });
+    } catch (error) {
+        console.error("Erro no processamento:", error);
+        res.status(500).json({ error: "Erro ao salvar banner", details: error.message });
     }
-
-    const sql = 'INSERT INTO banners (imagem, titulo, link_destino, funcionario_id, nome_funcionario, tipo) VALUES (?, ?, ?, ?, ?, ?)';
-    db.query(sql, [nomeArquivoFinal, titulo, link_destino, funcionario_id, nome_funcionario, tipo], (err) => {
-      if (err) return res.status(500).json({ error: "Erro ao salvar no banco", details: err });
-      res.json({ message: "Banner/Vídeo cadastrado com sucesso!" });
-    });
-    
-  } catch (error) {
-    console.error("Erro no Sharp:", error); // ISSO VAI MOSTRAR O ERRO NO SEU TERMINAL DO VSCODE
-    res.status(500).json({ error: "Erro ao processar arquivo", details: error.message });
-  }
 });
 
 // Rota de Deletar (SEGURA E ÚNICA)
-router.delete('/banners/:id', authMiddleware, (req, res) => {
-  const fs = require('fs');
-  const funcionario_id = req.user.id; 
-  const banner_id = req.params.id;
+router.delete('/banners/:id', authMiddleware, async (req, res) => {
+    const fs = require('fs');
+    const funcionario_id = req.user.id;
+    const banner_id = req.params.id;
 
-  db.query('SELECT imagem, funcionario_id FROM banners WHERE id = ?', [banner_id], (err, results) => {
-    if (err || results.length === 0) return res.status(404).json({ error: "Banner não encontrado" });
-    
-    if (results[0].funcionario_id !== funcionario_id) {
-      return res.status(403).json({ error: "Você não tem permissão para excluir este banner" });
+    try {
+        const [results] = await db.query('SELECT imagem, funcionario_id FROM banners WHERE id = ?', [banner_id]);
+        
+        if (results.length === 0) return res.status(404).json({ error: "Banner não encontrado" });
+        if (results[0].funcionario_id !== funcionario_id) {
+            return res.status(403).json({ error: "Você não tem permissão" });
+        }
+
+        const nomeImagem = results[0].imagem;
+        await db.query('DELETE FROM banners WHERE id = ?', [banner_id]);
+
+        const caminhoArquivo = path.join(__dirname, '../uploads/banners/', nomeImagem);
+        if (fs.existsSync(caminhoArquivo)) {
+            fs.unlinkSync(caminhoArquivo);
+        }
+
+        res.json({ message: "Banner e arquivo deletados com sucesso!" });
+    } catch (err) {
+        res.status(500).json({ error: "Erro ao deletar banner", details: err });
     }
-
-    const nomeImagem = results[0].imagem;
-    db.query('DELETE FROM banners WHERE id = ?', [banner_id], (err) => {
-      if (err) return res.status(500).json(err);
-      
-      const caminhoArquivo = path.join(__dirname, '../uploads/banners/', nomeImagem);
-      if (fs.existsSync(caminhoArquivo)) {
-        fs.unlinkSync(caminhoArquivo);
-      }
-      res.json({ message: "Banner e arquivo deletados com sucesso!" });
-    });
-  });
 });
 
 module.exports = router;

@@ -6,493 +6,164 @@ const authMiddleware = require("../middlewares/authMiddleware");
 const { getIo } = require("../utils/socket");
 
 
-function checkStoreOwner(req, res, next) {
-    // Garantimos que o ID da loja vindo da URL seja tratado corretamente
-    const lojaId = req.params.lojaId;
-
-    const sql = `
-        SELECT id
-        FROM stores
-        WHERE id = ?
-        AND user_id = ?
-        LIMIT 1
-    `;
-
-    db.query(
-        sql,
-        [lojaId, req.user.id],
-        (err, result) => {
-            if (err) {
-                // Logamos o erro real no console do servidor para você depurar
-                console.error("Erro no checkStoreOwner:", err);
-                // Retornamos uma mensagem segura para o cliente externo
-                return res.status(500).json({ error: "Erro interno no servidor" });
-            }
-
-            if (result.length === 0) {
-                return res.status(403).json({
-                    message: "Acesso negado"
-                });
-            }
-
-            // Se achou a loja e o dono bate com o usuário logado, prossegue
-            next();
-        }
-    );
+async function checkStoreOwner(req, res, next) {
+    try {
+        const [result] = await db.query("SELECT id FROM stores WHERE id = ? AND user_id = ? LIMIT 1", [req.params.lojaId, req.user.id]);
+        if (result.length === 0) return res.status(403).json({ message: "Acesso negado" });
+        next();
+    } catch (err) {
+        console.error("Erro no checkStoreOwner:", err);
+        res.status(500).json({ error: "Erro interno no servidor" });
+    }
 }
 
-function checkChatAccess(req, res, next) {
-    const { chatId } = req.params;
-
-    const sql = `
-        SELECT 
-            c.id,
-            c.cliente_id,
-            c.loja_id,
-            s.user_id AS dono_loja
-        FROM chats c
-        INNER JOIN stores s ON s.id = c.loja_id
-        WHERE c.id = ?
-        LIMIT 1
-    `;
-
-    db.query(sql, [chatId], (err, result) => {
-        if (err) {
-            // O erro real fica salvo apenas nos logs do seu servidor local
-            console.error("Erro no checkChatAccess:", err);
-            return res.status(500).json({ error: "Erro interno no servidor" });
-        }
-
-        if (result.length === 0) {
-            return res.status(404).json({
-                message: "Chat não encontrado"
-            });
-        }
-
+async function checkChatAccess(req, res, next) {
+    try {
+        const [result] = await db.query("SELECT c.*, s.user_id AS dono_loja FROM chats c INNER JOIN stores s ON s.id = c.loja_id WHERE c.id = ? LIMIT 1", [req.params.chatId]);
+        if (result.length === 0) return res.status(404).json({ message: "Chat não encontrado" });
+        
         const chat = result[0];
+        if (Number(chat.cliente_id) !== Number(req.user.id) && Number(chat.dono_loja) !== Number(req.user.id)) {
+            return res.status(403).json({ message: "Você não tem acesso a esse chat" });
+        }
+        req.chat = chat;
+        next();
+    } catch (err) {
+        console.error("Erro no checkChatAccess:", err);
+        res.status(500).json({ error: "Erro interno no servidor" });
+    }
+}
 
-        // Garantimos que a comparação seja feita estritamente como números válidos
+
+async function checkChatMessageAccess(req, res, next) {
+    if (!req.user) return res.status(401).json({ message: "Precisa estar logado" });
+    if (!req.body.chat_id) return next();
+
+    try {
+        const [result] = await db.query(`
+            SELECT c.*, s.user_id as dono_loja 
+            FROM chats c 
+            INNER JOIN stores s ON s.id = c.loja_id 
+            WHERE c.id = ? LIMIT 1`, [req.body.chat_id]);
+
+        if (result.length === 0) return res.status(404).json({ message: "Chat não encontrado" });
+        
+        const chat = result[0];
         const userId = Number(req.user.id);
-        const chatClienteId = Number(chat.cliente_id);
-        const chatDonoLoja = Number(chat.dono_loja);
-
-        const isCliente = chatClienteId === userId;
-        const isLojaOwner = chatDonoLoja === userId;
-
-        // 🔥 BLOQUEIO TOTAL CONTRA INVASORES
-        if (!isCliente && !isLojaOwner) {
-            return res.status(403).json({
-                message: "Você não tem acesso a esse chat"
-            });
+        if (Number(chat.cliente_id) !== userId && Number(chat.dono_loja) !== userId) {
+            return res.status(403).json({ message: "Acesso negado" });
         }
-
-        // 🔥 IMPORTANTE: salva os dados tratados no req para usar direto nos controllers
-        req.chat = {
-            id: chat.id,
-            cliente_id: chatClienteId,
-            loja_id: chat.loja_id,
-            dono_loja: chatDonoLoja
-        };
-
         next();
-    });
+    } catch (err) {
+        console.error("Erro no checkChatMessageAccess:", err);
+        res.status(500).json({ error: "Erro interno no servidor" });
+    }
 }
 
-
-function checkChatMessageAccess(req, res, next) {
-    const { chat_id } = req.body;
-
-    // Garante que o usuário está autenticado
-    if (!req.user) {
-        return res.status(401).json({
-            message: "Precisa estar logado"
-        });
-    }
-
-    // Se NÃO foi enviado chat_id no corpo da requisição, significa que é o início de um chat novo. 
-    // Portanto, permitimos avançar para que a rota crie o chat.
-    if (!chat_id) {
-        return next();
-    }
-
-    const sql = `
-        SELECT c.*, s.user_id as dono_loja
-        FROM chats c
-        INNER JOIN stores s ON s.id = c.loja_id
-        WHERE c.id = ?
-        LIMIT 1
-    `;
-
-    db.query(sql, [chat_id], (err, result) => {
-        if (err) {
-            console.error("Erro no checkChatMessageAccess:", err);
-            return res.status(500).json({ error: "Erro interno no servidor" });
-        }
-
-        // SE O CHAT_ID FOI ENVIADO, MAS NÃO EXISTE NO BANCO:
-        // Bloqueamos aqui com 404 para evitar falhas de chave estrangeira (Foreign Key Error) adiante.
-        if (result.length === 0) {
-            return res.status(404).json({
-                message: "Chat não encontrado"
-            });
-        }
-
-        const chat = result[0];
-
-        const usuarioEhCliente = Number(chat.cliente_id) === Number(req.user.id);
-        const usuarioEhDonoLoja = Number(chat.dono_loja) === Number(req.user.id);
-
-        // 🔥 TRAVA DE SEGURANÇA: Se o usuário logado não for nem o cliente do chat e nem o dono da loja, barramos o invasor.
-        if (!usuarioEhCliente && !usuarioEhDonoLoja) {
-            return res.status(403).json({
-                message: "Acesso negado"
-            });
-        }
-
-        // Tudo correto, avança para o controller da rota
-        next();
-    });
-}
-
-router.get("/cliente", authMiddleware, (req, res) => {
-    // Pegamos o ID diretamente do token verificado (Garante 100% de isolamento)
-    const clienteId = req.user.id;
-
-    const sql = `
-        SELECT 
-            c.id AS chatId,
-            c.loja_id,
-            c.atualizado_em,
-            (
-                SELECT mensagem
-                FROM mensagens m
-                WHERE m.chat_id = c.id
-                ORDER BY m.id DESC
-                LIMIT 1
-            ) AS ultimaMensagem,
-            l.nome AS nomeLoja
-        FROM chats c
-        INNER JOIN stores l ON l.id = c.loja_id
-        WHERE c.cliente_id = ?
-        ORDER BY c.atualizado_em DESC
-    `;
-
-    db.query(sql, [clienteId], (err, result) => {
-        if (err) {
-            // Registra a falha no console de forma destacada para o desenvolvedor
-            console.error("Erro ao listar chats do cliente:", err);
-            // Mensagem limpa e segura contra engenharia reversa de hackers
-            return res.status(500).json({ error: "Erro interno ao buscar conversas" });
-        }
-
-        // Retorna a lista de chats perfeitamente estruturada
+router.get("/cliente", authMiddleware, async (req, res) => {
+    try {
+        const [result] = await db.query(`
+            SELECT c.id AS chatId, c.loja_id, c.atualizado_em, l.nome AS nomeLoja,
+            (SELECT mensagem FROM mensagens m WHERE m.chat_id = c.id ORDER BY m.id DESC LIMIT 1) AS ultimaMensagem
+            FROM chats c INNER JOIN stores l ON l.id = c.loja_id WHERE c.cliente_id = ? ORDER BY c.atualizado_em DESC`, [req.user.id]);
         res.json(result);
-    });
+    } catch (err) {
+        res.status(500).json({ error: "Erro interno ao buscar conversas" });
+    }
 });
 
 
-router.get("/loja/:lojaId", authMiddleware, checkStoreOwner, (req, res) => {
-    const { lojaId } = req.params;
-
-    const sql = `
-        SELECT
-            c.id,
-            c.pedido_id,
-            c.cliente_id,
-            c.loja_id,
-            c.criado_em,
-            c.atualizado_em,
-            c.tem_nova_msg,
-            u.username AS cliente_nome,
-            (
-                SELECT mensagem
-                FROM mensagens m
-                WHERE m.chat_id = c.id
-                ORDER BY m.id DESC
-                LIMIT 1
-            ) as ultima_mensagem
-        FROM chats c
-        INNER JOIN users u ON u.id = c.cliente_id
-        WHERE c.loja_id = ?
-        ORDER BY c.atualizado_em DESC
-    `;
-
-    db.query(sql, [lojaId], (err, result) => {
-        if (err) {
-            // Log detalhado para o ambiente de desenvolvimento
-            console.error("Erro ao listar chats da loja:", err);
-            // Resposta padronizada e segura para o cliente externo
-            return res.status(500).json({ error: "Erro interno ao buscar o inbox da loja" });
-        }
-
-        // Retorna os chats com o nome do cliente e a última mensagem atualizada
+router.get("/loja/:lojaId", authMiddleware, checkStoreOwner, async (req, res) => {
+    try {
+        const [result] = await db.query(`
+            SELECT c.*, u.username AS cliente_nome,
+            (SELECT mensagem FROM mensagens m WHERE m.chat_id = c.id ORDER BY m.id DESC LIMIT 1) as ultima_mensagem
+            FROM chats c INNER JOIN users u ON u.id = c.cliente_id WHERE c.loja_id = ? ORDER BY c.atualizado_em DESC`, [req.params.lojaId]);
         res.json(result);
-    });
+    } catch (err) {
+        res.status(500).json({ error: "Erro interno ao buscar o inbox da loja" });
+    }
 });
-
 
 
 // ==========================================
 // DADOS DO CHAT (DADOS DE CABEÇALHO/METADADOS)
 // ==========================================
-router.get("/:chatId", authMiddleware, checkChatAccess, (req, res) => {
-    const { chatId } = req.params;
-
-    const sql = `
-        SELECT
-            c.*,
-            s.nome AS loja_nome
-        FROM chats c
-        INNER JOIN stores s ON s.id = c.loja_id
-        WHERE c.id = ?
-        LIMIT 1
-    `;
-
-    db.query(sql, [chatId], (err, result) => {
-        if (err) {
-            console.error("Erro ao buscar dados do chat:", err);
-            return res.status(500).json({ error: "Erro interno ao buscar dados do chat" });
-        }
-
-        // Como o checkChatAccess já roda antes e barra se não existir, 
-        // este if 404 aqui vira uma rede de segurança extra perfeita.
-        if (result.length === 0) {
-            return res.status(404).json({
-                message: "Chat não encontrado"
-            });
-        }
-
-        // Devolve os dados do chat com o nome da loja associada
+router.get("/:chatId", authMiddleware, checkChatAccess, async (req, res) => {
+    try {
+        const [result] = await db.query("SELECT c.*, s.nome AS loja_nome FROM chats c INNER JOIN stores s ON s.id = c.loja_id WHERE c.id = ?", [req.params.chatId]);
         res.json(result[0]);
-    });
+    } catch (err) {
+        res.status(500).json({ error: "Erro interno ao buscar dados do chat" });
+    }
 });
-
-
 
 // ==========================================
 // LISTAR MENSAGENS DO CHAT (HISTÓRICO DA CONVERSA)
 // ==========================================
-router.get("/:chatId/mensagens", authMiddleware, checkChatAccess, (req, res) => {
-    const { chatId } = req.params;
-
-    const sql = `
-        SELECT *
-        FROM mensagens
-        WHERE chat_id = ?
-        ORDER BY criado_em ASC
-    `;
-
-    db.query(sql, [chatId], (err, result) => {
-        if (err) {
-            // Registra o erro interno detalhado apenas no servidor backend
-            console.error("Erro ao listar mensagens do chat:", err);
-            // Retorna um erro limpo e padronizado para o front-end/cliente
-            return res.status(500).json({ error: "Erro interno ao carregar o histórico de mensagens" });
-        }
-
-        // Retorna o array de mensagens ordenado por ordem cronológica (as mais antigas primeiro)
+router.get("/:chatId/mensagens", authMiddleware, checkChatAccess, async (req, res) => {
+    try {
+        const [result] = await db.query("SELECT * FROM mensagens WHERE chat_id = ? ORDER BY criado_em ASC", [req.params.chatId]);
         res.json(result);
-    });
+    } catch (err) {
+        res.status(500).json({ error: "Erro interno ao carregar o histórico de mensagens" });
+    }
 });
-
 // ==========================================================
 // ENVIAR MENSAGEM (COM CRIAÇÃO DE CHAT DINÂMICA E WEBSOCKET)
 // ==========================================================
-router.post("/mensagem", authMiddleware, checkChatMessageAccess, (req, res) => {
-    const {
-        chat_id,
-        mensagem,
-        tipo,
-        remetente_tipo,
-        loja_id,
-        cliente_id
-    } = req.body;
-
+router.post("/mensagem", authMiddleware, checkChatMessageAccess, async (req, res) => {
+    const { chat_id, mensagem, tipo, remetente_tipo, loja_id, cliente_id } = req.body;
     const remetente_id = req.user.id;
 
-    // 1. SE NÃO HOUVER CHAT_ID, CRIA UM NOVO CHAT NO BANCO
-    if (!chat_id) {
-        const criarChat = `
-            INSERT INTO chats
-            (pedido_id, cliente_id, loja_id, atualizado_em, tem_nova_msg)
-            VALUES (?, ?, ?, NOW(), TRUE)
-        `;
+    try {
+        let targetChatId = chat_id;
 
-        db.query(
-            criarChat,
-            [
-                null,
-                remetente_tipo === "cliente" ? remetente_id : cliente_id,
-                loja_id
-            ],
-            (err, result) => {
-                if (err) {
-                    console.error("Erro ao criar novo chat:", err);
-                    return res.status(500).json({ error: "Erro interno ao iniciar chat" });
-                }
+        if (!chat_id) {
+            const [newChat] = await db.query("INSERT INTO chats (cliente_id, loja_id, atualizado_em, tem_nova_msg) VALUES (?, ?, NOW(), TRUE)", 
+                [remetente_tipo === "cliente" ? remetente_id : cliente_id, loja_id]);
+            targetChatId = newChat.insertId;
+        } else {
+            await db.query("UPDATE chats SET tem_nova_msg = TRUE, atualizado_em = NOW() WHERE id = ?", [chat_id]);
+        }
 
-                const novoChatId = result.insertId;
-                salvarMensagem(novoChatId);
-            }
-        );
-    } else {
-        // 2. SE JÁ EXISTIR, ATUALIZA O STATUS DO CHAT E SALVA A MENSAGEM
-        const atualizarChat = `
-            UPDATE chats 
-            SET tem_nova_msg = TRUE, atualizado_em = NOW() 
-            WHERE id = ?
-        `;
-        
-        db.query(atualizarChat, [chat_id], (err) => {
-            if (err) {
-                console.error("Erro ao atualizar metadados do chat:", err);
-                // Continua mesmo se falhar o update, para não travar o envio da mensagem
-            }
-            salvarMensagem(chat_id);
-        });
-    }
+        const [msgResult] = await db.query("INSERT INTO mensagens (chat_id, remetente_id, remetente_tipo, tipo, mensagem) VALUES (?, ?, ?, ?, ?)", 
+            [targetChatId, remetente_id, remetente_tipo, tipo, mensagem]);
 
-    // FUNÇÃO INTERNA PARA INSERIR A MENSAGEM E EMITIR VIA SOCKET.IO
-    function salvarMensagem(chatId) {
-        const sql = `
-            INSERT INTO mensagens
-            (chat_id, remetente_id, remetente_tipo, tipo, mensagem)
-            VALUES (?, ?, ?, ?, ?)
-        `;
+        const [chatData] = await db.query("SELECT loja_id FROM chats WHERE id = ?", [targetChatId]);
+        const lojaIdReal = chatData[0].loja_id;
 
-        db.query(
-            sql,
-            [chatId, remetente_id, remetente_tipo, tipo, mensagem],
-            (err, result) => {
-                if (err) {
-                    console.error("Erro ao salvar mensagem:", err);
-                    return res.status(500).json({ error: "Erro interno ao salvar mensagem" });
-                }
+        const novaMensagem = { id: msgResult.insertId, chat_id: targetChatId, loja_id: lojaIdReal, mensagem, remetente_tipo, remetente_id, criado_em: new Date().toISOString() };
 
-                // BUSCA O LOJA_ID REAL PARA ENVIAR O WEBSOCKET PARA A SALA CERTA
-                const buscarLoja = `
-                    SELECT loja_id
-                    FROM chats
-                    WHERE id = ?
-                    LIMIT 1
-                `;
+        const io = getIo();
+        if (io) {
+            io.to(`chat_${targetChatId}`).emit("nova_mensagem", novaMensagem);
+            io.to(`loja_${lojaIdReal}`).emit("nova_mensagem_loja", novaMensagem);
+        }
 
-                db.query(buscarLoja, [chatId], (err2, chatResult) => {
-                    if (err2) {
-                        console.error("Erro ao buscar loja do chat para socket:", err2);
-                        return res.status(500).json({ error: "Erro interno ao processar metadados" });
-                    }
-
-                    if (chatResult.length === 0) {
-                        return res.status(404).json({ message: "Chat não encontrado" });
-                    }
-
-                    const lojaIdReal = chatResult[0].loja_id;
-
-                    const novaMensagem = {
-                        id: result.insertId,
-                        chat_id: chatId,
-                        loja_id: lojaIdReal,
-                        mensagem,
-                        remetente_tipo,
-                        remetente_id,
-                        criado_em: new Date().toISOString()
-                    };
-
-                    // 🔥 BLOCO DEFENSIVO DE WEBSOCKET (Protege a suíte de testes do Jest)
-                    try {
-                        const io = getIo();
-                        if (io && typeof io.to === "function") {
-                            // Envia para a sala exclusiva do chat aberto (Cliente e Lojista sintonizados)
-                            io.to(`chat_${chatId}`).emit("nova_mensagem", novaMensagem);
-
-                            // Envia para o Inbox global da loja (Para atualizar a bolinha de notificação do lojista)
-                            io.to(`loja_${lojaIdReal}`).emit("nova_mensagem_loja", novaMensagem);
-                        }
-                    } catch (socketErr) {
-                        // Silencia o erro de socket no console durante os testes
-                    }
-
-                    // Retorna sucesso para o front-end
-                    return res.json({
-                        message: "Mensagem enviada",
-                        chat_id: chatId,
-                        id: result.insertId
-                    });
-                });
-            }
-        );
+        res.json({ message: "Mensagem enviada", chat_id: targetChatId, id: msgResult.insertId });
+    } catch (err) {
+        res.status(500).json({ error: "Erro interno ao processar mensagem" });
     }
 });
-
         
 // ==========================================================
 // ABRIR OU LOCALIZAR CHAT EXISTENTE (BOTÃO "CONVERSAR")
 // ==========================================================
-router.post("/abrir", authMiddleware, (req, res) => {
-    const cliente_id = req.user.id;
+router.post("/abrir", authMiddleware, async (req, res) => {
     const { loja_id } = req.body;
+    try {
+        const [loja] = await db.query("SELECT id FROM stores WHERE id = ? LIMIT 1", [loja_id]);
+        if (loja.length === 0) return res.status(404).json({ message: "A loja não existe" });
 
-    // Validação básica do body para evitar queries desnecessárias
-    if (!loja_id) {
-        return res.status(400).json({ error: "O campo loja_id é obrigatório." });
+        const [chat] = await db.query("SELECT id FROM chats WHERE cliente_id = ? AND loja_id = ? LIMIT 1", [req.user.id, loja_id]);
+        if (chat.length > 0) return res.json({ chat_id: chat[0].id });
+
+        const [newChat] = await db.query("INSERT INTO chats (cliente_id, loja_id, atualizado_em) VALUES (?, ?, NOW())", [req.user.id, loja_id]);
+        res.json({ chat_id: newChat.insertId });
+    } catch (err) {
+        res.status(500).json({ error: "Erro interno ao processar abertura de chat" });
     }
-
-    // 1. ANTES DE TUDO, VERIFICA SE A LOJA REALMENTE EXISTE
-    const verificarLoja = `SELECT id FROM stores WHERE id = ? LIMIT 1`;
-
-    db.query(verificarLoja, [loja_id], (errLoja, lojaResult) => {
-        if (errLoja) {
-            console.error("Erro ao verificar existência da loja:", errLoja);
-            return res.status(500).json({ error: "Erro interno no servidor" });
-        }
-
-        if (lojaResult.length === 0) {
-            return res.status(404).json({ message: "A loja informada não existe" });
-        }
-
-        // 2. PROCURA SE JÁ EXISTE UM CHAT ENTRE ESTE CLIENTE E ESTA LOJA
-        const buscarChat = `
-            SELECT id
-            FROM chats
-            WHERE cliente_id = ?
-            AND loja_id = ?
-            LIMIT 1
-        `;
-
-        db.query(buscarChat, [cliente_id, loja_id], (err, result) => {
-            if (err) {
-                console.error("Erro ao buscar chat existente:", err);
-                return res.status(500).json({ error: "Erro interno no servidor" });
-            }
-
-            // Se o chat já existe, apenas retorna o ID dele para o front-end redirecionar
-            if (result.length > 0) {
-                return res.json({
-                    chat_id: result[0].id
-                });
-            }
-
-            // 3. SE NÃO EXISTIR, CRIA UM NOVO CHAT COM SEGURANÇA
-            const criarChat = `
-                INSERT INTO chats
-                (cliente_id, loja_id, atualizado_em)
-                VALUES (?, ?, NOW())
-            `;
-
-            db.query(criarChat, [cliente_id, loja_id], (err2, result2) => {
-                if (err2) {
-                    console.error("Erro ao criar novo chat no /abrir:", err2);
-                    return res.status(500).json({ error: "Erro interno ao gerar nova conversa" });
-                }
-
-                // Retorna o ID do chat recém-criado
-                res.json({
-                    chat_id: result2.insertId
-                });
-            });
-        });
-    });
 });
 
 
@@ -500,28 +171,13 @@ router.post("/abrir", authMiddleware, (req, res) => {
 // ==========================================================
 // MARCAR CHAT COMO VISUALIZADO (LIMPAR NOTIFICAÇÃO)
 // ==========================================================
-router.put("/visualizar/:chatId", authMiddleware, checkChatAccess, (req, res) => {
-    const { chatId } = req.params;
-
-    const sql = `
-        UPDATE chats
-        SET tem_nova_msg = FALSE
-        WHERE id = ?
-    `;
-
-    db.query(sql, [chatId], (err) => {
-        if (err) {
-            // Loga o erro real internamente para o desenvolvedor analisar
-            console.error("Erro ao marcar chat como visualizado:", err);
-            // Resposta padronizada e segura para o cliente externo
-            return res.status(500).json({ error: "Erro interno ao atualizar status do chat" });
-        }
-
-        // Retorna sucesso para o front-end sumir com o indicador de "não lido"
-        res.json({
-            message: "Chat visualizado com sucesso"
-        });
-    });
+router.put("/visualizar/:chatId", authMiddleware, checkChatAccess, async (req, res) => {
+    try {
+        await db.query("UPDATE chats SET tem_nova_msg = FALSE WHERE id = ?", [req.params.chatId]);
+        res.json({ message: "Chat visualizado com sucesso" });
+    } catch (err) {
+        res.status(500).json({ error: "Erro interno ao atualizar status do chat" });
+    }
 });
 
 

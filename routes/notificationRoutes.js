@@ -6,7 +6,7 @@ const authMiddleware = require("../middlewares/authMiddleware");
 // ==========================================
 // LISTAR NOTIFICAÇÕES DO USUÁRIO LOGADO
 // ==========================================
-router.get("/notifications", authMiddleware, (req, res) => {
+router.get("/notifications", authMiddleware, async (req, res) => {
     const userId = req.user.id;
 
     const sql = `
@@ -16,16 +16,18 @@ router.get("/notifications", authMiddleware, (req, res) => {
         ORDER BY id DESC
     `;
 
-    db.query(sql, [userId], (err, result) => {
-        if (err) {
-            // Registra o erro internamente para o desenvolvedor ver
-            console.error("Erro ao buscar notificações:", err);
-            // Resposta genérica e segura para o cliente/hacker
-            return res.status(500).json({ error: "Erro interno ao buscar notificações" });
-        }
-
+    try {
+        // Usamos await para esperar a query e desestruturamos o resultado
+        const [result] = await db.query(sql, [userId]);
+        
+        // Retorna o resultado obtido
         res.json(result);
-    });
+    } catch (err) {
+        // Registra o erro internamente para o desenvolvedor
+        console.error("Erro ao buscar notificações:", err);
+        // Resposta genérica e segura para o cliente
+        res.status(500).json({ error: "Erro interno ao buscar notificações" });
+    }
 });
 
 module.exports = router;

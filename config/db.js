@@ -1,19 +1,18 @@
 const mysql = require('mysql2');
 
-const connection = mysql.createConnection({
+// Criamos o pool em vez de uma conexão simples
+const pool = mysql.createPool({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME
+    database: process.env.DB_NAME,
+    waitForConnections: true,
+    connectionLimit: 10, // Quantidade máxima de conexões simultâneas
+    queueLimit: 0
 });
 
-connection.connect((err) => {
-    if (err) {
-        console.log("Erro ao conectar no MySQL:", err);
-        return;
-    }
+// O pool não precisa de um .connect() manual, ele cria as conexões 
+// assim que a primeira query for executada.
 
-    console.log("Conectado ao MySQL!");
-});
-
-module.exports = connection;
+// Exportamos o pool com o suporte a Promises (fica mais fácil usar async/await)
+module.exports = pool.promise();

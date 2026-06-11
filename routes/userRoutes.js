@@ -3,697 +3,204 @@ const router = express.Router();
 const db = require('../config/db');
 const jwt = require('jsonwebtoken');
 const authMiddleware = require('../middlewares/authMiddleware');
-const upload = require('../middlewares/uploadLojas');
-const uploadPerfil = require('../middlewares/uploadPerfil');
-const {
-    loginLimiter,
-    registerLimiter
-} = require("../middlewares/rateLimiter");
-const SECRET = process.env.JWT_SECRET;
 const bcrypt = require("bcrypt");
 
+// IMPORTAÇÃO CORRETA (Sem chaves, pois seu arquivo exporta a instância diretamente)
+const uploadPerfil = require('../middlewares/uploadPerfil'); 
+
+const { loginLimiter, registerLimiter } = require("../middlewares/rateLimiter");
+const SECRET = process.env.JWT_SECRET;
 // ===============================
 // CRIAR USUÁRIO TEMOS NO BANCO enum('cliente','lojista','funcionario','admin')
 // ===============================
 router.post('/users', registerLimiter, async (req, res) => {
-
     try {
-
         const { username, password } = req.body;
+        if (!username || !password) return res.status(400).json({ error: "Usuário e senha são obrigatórios." });
 
-
-        // Campos obrigatórios
-        if (!username || !password) {
-            return res.status(400).json({
-                error: "Usuário e senha são obrigatórios."
-            });
-        }
-
-        // Remove espaços extras
         const usernameLimpo = username.trim();
-        const passwordLimpa = password.trim();
-
-        // Tamanho mínimo do usuário
-        if (usernameLimpo.length < 4) {
-            return res.status(400).json({
-                error: "O usuário deve ter pelo menos 4 caracteres."
-            });
+        if (usernameLimpo.length < 4 || password.trim().length < 6) {
+            return res.status(400).json({ error: "Dados inválidos: min 4 caracteres para usuário e 6 para senha." });
         }
 
-        // Tamanho mínimo da senha
-        if (passwordLimpa.length < 6) {
-            return res.status(400).json({
-                error: "A senha deve ter pelo menos 6 caracteres."
-            });
-        }
+        const [exists] = await db.query("SELECT id FROM users WHERE username = ?", [usernameLimpo]);
+        if (exists.length > 0) return res.status(409).json({ error: "Este usuário já existe." });
 
-        // Verifica se já existe
-        db.query(
-            "SELECT id FROM users WHERE username = ?",
-            [usernameLimpo],
-            async (err, result) => {
+        const senhaHash = await bcrypt.hash(password.trim(), 10);
+        await db.query("INSERT INTO users (username, password, tipo) VALUES (?, ?, 'cliente')", [usernameLimpo, senhaHash]);
 
-                if (err) {
-                    return res.status(500).json({
-    error: "Erro interno do servidor"
-});
-                }
-
-                if (result.length > 0) {
-                    return res.status(409).json({
-                        error: "Este usuário já existe."
-                    });
-                }
-
-                const senhaHash = await bcrypt.hash(passwordLimpa, 10);
-
-                db.query(
-                    `
-                    INSERT INTO users
-                    (username, password, tipo)
-                    VALUES (?, ?, ?)
-                    `,
-                    [
-                        usernameLimpo,
-                        senhaHash,
-                        "cliente"
-                    ],
-                    (err) => {
-
-                        if (err) {
-                            return res.status(500).json({
-    error: "Erro interno do servidor"
-});
-                        }
-
-                        res.json({
-                            message: "Conta criada com sucesso!"
-                        });
-
-                    }
-                );
-
-            }
-        );
-
+        res.json({ message: "Conta criada com sucesso!" });
     } catch (error) {
-
-        console.log(error);
-
-        return res.status(500).json({
-            error: "Erro interno do servidor"
-        });
-
+        res.status(500).json({ error: "Erro interno do servidor" });
     }
-
 });
 
-
-
 // ===============================
-// LOGIN (CORRIGIDO)
+// LOGIN
 // ===============================
-router.post('/login',loginLimiter , (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
+    try {
+        const { username, password } = req.body;
+        const [users] = await db.query(`
+            SELECT u.*, s.id AS loja_id FROM users u 
+            LEFT JOIN stores s ON s.user_id = u.id 
+            WHERE u.username = ? LIMIT 1`, [username]);
 
-    const { username, password } = req.body;
+        if (users.length === 0) return res.status(401).json({ error: "Usuário ou senha inválidos" });
 
-    const sql = `
-        SELECT
-            users.id,
-            users.username,
-            users.password,
-            users.tipo,
-            stores.id AS loja_id
-        FROM users
-        LEFT JOIN stores
-            ON stores.user_id = users.id
-        WHERE users.username = ?
-        LIMIT 1
-    `;
+        const user = users[0];
+        const isBcrypt = user.password.startsWith("$2a$") || user.password.startsWith("$2b$") || user.password.startsWith("$2y$");
+        const senhaCorreta = isBcrypt ? await bcrypt.compare(password, user.password) : (password === user.password);
 
-    db.query(sql, [username], async (err, result) => {
+        if (!senhaCorreta) return res.status(401).json({ error: "Usuário ou senha inválidos" });
 
-        if (err) {
-            console.log(err);
-            return res.status(500).json({
-    error: "Erro interno do servidor"
-});
-        }
-
-        if (result.length === 0) {
-            return res.status(401).json({
-                error: "Usuário ou senha inválidos"
-            });
-        }
-
-        const user = result[0];
-
-        let senhaCorreta = false;
-
-        // Senha criptografada com bcrypt
-        if (
-            user.password.startsWith("$2a$") ||
-            user.password.startsWith("$2b$") ||
-            user.password.startsWith("$2y$")
-        ) {
-
-            senhaCorreta = await bcrypt.compare(
-                password,
-                user.password
-            );
-
-        } else {
-
-            // Senha antiga salva em texto puro
-            senhaCorreta = (
-                password === user.password
-            );
-
-        }
-
-        if (!senhaCorreta) {
-            return res.status(401).json({
-                error: "Usuário ou senha inválidos"
-            });
-        }
-
-        const token = jwt.sign(
-            {
-                id: user.id,
-                tipo: user.tipo
-            },
-            SECRET,
-            {
-                expiresIn: "23h"
-            }
-        );
+        const token = jwt.sign({ id: user.id, tipo: user.tipo }, SECRET, { expiresIn: "23h" });
 
         res.json({
             message: "Login feito com sucesso!",
             token,
-            user: {
-                id: user.id,
-                username: user.username,
-                tipo: user.tipo,
-                loja_id: user.loja_id || null
-            }
+            user: { id: user.id, username: user.username, tipo: user.tipo, loja_id: user.loja_id || null }
         });
-
-    });
-
-});
-
-
-// ===============================
-// LISTAR USUÁRIOS
-// ===============================
-router.get('/users', authMiddleware,  (req, res) => {
-
-    db.query("SELECT * FROM users", (err, result) => {
-
-        if (err) {
-            return res.status(500).json({
-    message: "Erro interno no servidor"
-});
-        }
-
-        res.json(result);
-
-    });
-
-});
-
-// ===============================
-// BUSCAR USUÁRIO POR ID
-// ===============================
-router.get('/users/:id', authMiddleware, (req, res) => {
-
-    const { id } = req.params;
-
-    const sql = `
-        SELECT
-            id,
-            username
-        FROM users
-        WHERE id = ?
-        LIMIT 1
-    `;
-
-    db.query(sql, [id], (err, result) => {
-
-        if (err) {
-            return res.status(500).json({
-    error: "Erro interno do servidor"
-});
-        }
-
-        if (result.length === 0) {
-            return res.status(404).json({
-                error: "Usuário não encontrado"
-            });
-        }
-
-        res.json(result[0]);
-
-    });
-
-});
-
-// ===============================
-// ATUALIZAR USUÁRIO
-// ===============================
-router.put(
-    '/users/:id',
-    authMiddleware,
-    uploadPerfil.single('imagem_perfil'),
-    async (req, res) => {
-
-        try {
-
-            const userIdLogado = req.user.id;
-            const { id } = req.params;
-
-            // 🔒 segurança: só pode editar o próprio usuário
-            if (Number(id) !== Number(userIdLogado)) {
-                return res.status(403).json({
-                    error: "Você não tem permissão para alterar este usuário"
-                });
-            }
-
-            const { username, password } = req.body;
-
-            // 📸 imagem opcional
-            const imagem = req.file ? req.file.filename : null;
-
-            // 👤 valida username
-            if (!username || username.trim().length < 4) {
-                return res.status(400).json({
-                    error: "O usuário deve ter pelo menos 4 caracteres"
-                });
-            }
-
-            let sql;
-            let valores;
-
-            // ===============================
-            // CASO TENHA SENHA NOVA
-            // ===============================
-            if (password && password.trim()) {
-
-                if (password.length < 6) {
-                    return res.status(400).json({
-                        error: "A senha deve ter pelo menos 6 caracteres"
-                    });
-                }
-
-                const senhaForte = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/;
-
-                if (!senhaForte.test(password)) {
-                    return res.status(400).json({
-                        error: "A senha deve conter letra maiúscula, minúscula e número"
-                    });
-                }
-
-                const senhaHash = await bcrypt.hash(password, 10);
-
-                // ===============================
-                // COM OU SEM IMAGEM (SENHA)
-                // ===============================
-                if (imagem) {
-
-                    sql = `
-                        UPDATE users
-                        SET username = ?, password = ?, imagem_perfil = ?
-                        WHERE id = ?
-                    `;
-
-                    valores = [
-                        username,
-                        senhaHash,
-                        imagem,
-                        id
-                    ];
-
-                } else {
-
-                    sql = `
-                        UPDATE users
-                        SET username = ?, password = ?
-                        WHERE id = ?
-                    `;
-
-                    valores = [
-                        username,
-                        senhaHash,
-                        id
-                    ];
-
-                }
-
-            } else {
-
-                // ===============================
-                // SEM ALTERAR SENHA
-                // ===============================
-                if (imagem) {
-
-                    sql = `
-                        UPDATE users
-                        SET username = ?, imagem_perfil = ?
-                        WHERE id = ?
-                    `;
-
-                    valores = [
-                        username,
-                        imagem,
-                        id
-                    ];
-
-                } else {
-
-                    sql = `
-                        UPDATE users
-                        SET username = ?
-                        WHERE id = ?
-                    `;
-
-                    valores = [
-                        username,
-                        id
-                    ];
-
-                }
-            }
-
-            // ===============================
-            // EXECUTA UPDATE
-            // ===============================
-            db.query(sql, valores, (err) => {
-
-                if (err) {
-                    return res.status(500).json({
-    error: "Erro interno do servidor"
-});
-                }
-
-                res.json({
-                    message: "Usuário atualizado com sucesso"
-                });
-
-            });
-
-        } catch (error) {
-
-            console.log(error);
-
-            return res.status(500).json({
-                error: "Erro interno do servidor"
-            });
-
-        }
-
+    } catch (err) {
+        res.status(500).json({ error: "Erro interno do servidor" });
     }
-);
+});
+
+// ===============================
+// ATUALIZAR USUÁRIO (Dinâmico)
+// ===============================
+router.put('/users/:id', authMiddleware, uploadPerfil.single('imagem_perfil'), async (req, res) => {
+    try {
+        if (Number(req.params.id) !== Number(req.user.id)) return res.status(403).json({ error: "Sem permissão" });
+
+        const { username, password } = req.body;
+        const updates = [];
+        const values = [];
+
+        if (username) {
+            updates.push("username = ?");
+            values.push(username.trim());
+        }
+
+        if (password) {
+            if (password.length < 6 || !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/.test(password)) {
+                return res.status(400).json({ error: "Senha fora dos padrões de segurança" });
+            }
+            updates.push("password = ?");
+            values.push(await bcrypt.hash(password, 10));
+        }
+
+        if (req.file) {
+            updates.push("imagem_perfil = ?");
+            values.push(req.file.filename);
+        }
+
+        if (updates.length === 0) return res.status(400).json({ error: "Nada para atualizar" });
+
+        values.push(req.params.id);
+        await db.query(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`, values);
+
+        res.json({ message: "Usuário atualizado com sucesso" });
+    } catch (err) {
+        res.status(500).json({ error: "Erro ao atualizar" });
+    }
+});
+
+
+
 
 // ===============================
 // PERFIL DO CLIENTE
 // ===============================
-router.get('/client-profile', authMiddleware, (req, res) => {
-
-    const userId = req.user.id;
-
-    const sql = `
-        SELECT
-            u.id,
-            u.username,
-    u.imagem_perfil,
-            u.created_at,
+router.get('/client-profile', authMiddleware, async (req, res) => {
+    try {
+        const [result] = await db.query(`
+            SELECT u.id, u.username, u.imagem_perfil, u.created_at, 
             COUNT(p.id) AS total_compras
-        FROM users u
-        LEFT JOIN pedidos p
-            ON p.usuario_id = u.id
-        WHERE u.id = ?
-        GROUP BY u.id
-    `;
+            FROM users u
+            LEFT JOIN pedidos p ON p.usuario_id = u.id
+            WHERE u.id = ? GROUP BY u.id`, [req.user.id]);
 
-    db.query(sql, [userId], (err, result) => {
-
-        if (err) {
-            return res.status(500).json({
-    error: "Erro interno do servidor"
-});
-        }
-
-        if (result.length === 0) {
-            return res.status(404).json({
-                error: "Usuário não encontrado"
-            });
-        }
-
-        res.json({
-    id: result[0].id,
-    username: result[0].username,
-    imagem_perfil: result[0].imagem_perfil,
-    created_at: result[0].created_at,
-    total_compras: result[0].total_compras
-});
-
-    });
-
-});
-
-router.get("/perfil-cliente/:id", (req, res) => {
-
-    const { id } = req.params;
-
-    const sql = `
-        SELECT
-            id,
-            username,
-            imagem_perfil,
-            created_at
-        FROM users
-        WHERE id = ?
-    `;
-
-    db.query(sql, [id], (err, result) => {
-
-        if (err) {
-            console.log(err);
-            return res.status(500).json({
-    error: "Erro interno do servidor"
-});
-        }
-
-        if (result.length === 0) {
-            return res.status(404).json({
-                message: "Usuário não encontrado"
-            });
-        }
-
+        if (result.length === 0) return res.status(404).json({ error: "Usuário não encontrado" });
         res.json(result[0]);
-
-    });
-
+    } catch (err) {
+        res.status(500).json({ error: "Erro interno do servidor" });
+    }
 });
 
-router.get("/perfil-cliente/:id/pedidos", (req, res) => {
-
-    const { id } = req.params;
-
-    const sql = `
-        SELECT id
-        FROM pedidos
-        WHERE usuario_id = ?
-    `;
-
-    db.query(sql, [id], (err, result) => {
-
-        if (err) {
-            console.log(err);
-            return res.status(500).json({
-    error: "Erro interno do servidor"
+router.get("/perfil-cliente/:id", async (req, res) => {
+    try {
+        const [result] = await db.query("SELECT id, username, imagem_perfil, created_at FROM users WHERE id = ?", [req.params.id]);
+        if (result.length === 0) return res.status(404).json({ message: "Usuário não encontrado" });
+        res.json(result[0]);
+    } catch (err) {
+        res.status(500).json({ error: "Erro interno do servidor" });
+    }
 });
-        }
 
+router.get("/perfil-cliente/:id/pedidos", async (req, res) => {
+    try {
+        const [result] = await db.query("SELECT id FROM pedidos WHERE usuario_id = ?", [req.params.id]);
         res.json(result);
-
-    });
-
+    } catch (err) {
+        res.status(500).json({ error: "Erro interno do servidor" });
+    }
 });
 
 // ===============================
-// PERFIL LOGADO
+// PERFIL LOGADO E COMPLETO
 // ===============================
-router.get('/perfil', authMiddleware, (req, res) => {
+router.get('/perfil', authMiddleware, (req, res) => res.json({ message: "Você está logado!", user: req.user }));
 
-    res.json({
-        message: "Você está logado!",
-        user: req.user
-    });
-
+router.get('/profile', authMiddleware, async (req, res) => {
+    try {
+        const [result] = await db.query(`
+            SELECT u.id, u.username, s.nome AS nomeLoja, s.categoria, s.imagem
+            FROM users u LEFT JOIN stores s ON u.id = s.user_id
+            WHERE u.id = ? LIMIT 1`, [req.user.id]);
+        res.json(result[0] || {});
+    } catch (err) {
+        res.status(500).json({ error: "Erro interno do servidor" });
+    }
 });
 
-
 // ===============================
-// PEGAR PERFIL COMPLETO
+// ATUALIZAR PERFIL + LOJA (Com Transação)
 // ===============================
-router.get('/profile', authMiddleware, (req, res) => {
+router.put('/update-profile', authMiddleware,uploadPerfil.single('imagem'), async (req, res) => {
+    const connection = await db.getConnection();
+    try {
+        await connection.beginTransaction();
+        const { username, nomeLoja, categoria } = req.body;
+        const imagem = req.file ? req.file.filename : null;
 
-    const userId = req.user.id;
+        // 1. Atualiza Usuário
+        await connection.query("UPDATE users SET username = ? WHERE id = ?", [username, req.user.id]);
 
-    const sql = `
-        SELECT 
-            users.id,
-            users.username,
-            stores.nome AS nomeLoja,
-            stores.categoria,
-            stores.imagem
-        FROM users
-        LEFT JOIN stores 
-            ON users.id = stores.user_id
-        WHERE users.id = ?
-        LIMIT 1
-    `;
+        // 2. Verifica/Atualiza Loja
+        const [loja] = await connection.query("SELECT id FROM stores WHERE user_id = ?", [req.user.id]);
 
-    db.query(sql, [userId], (err, result) => {
-
-        if (err) {
-            return res.status(500).json({
-    error: "Erro interno do servidor"
-});
+        if (loja.length === 0) {
+            await connection.query(
+                "INSERT INTO stores (user_id, nome, categoria, imagem) VALUES (?, ?, ?, ?)",
+                [req.user.id, nomeLoja, categoria, imagem]
+            );
+        } else {
+            const updates = ["nome = ?", "categoria = ?"];
+            const values = [nomeLoja, categoria];
+            if (imagem) { updates.push("imagem = ?"); values.push(imagem); }
+            values.push(req.user.id);
+            await connection.query(`UPDATE stores SET ${updates.join(", ")} WHERE user_id = ?`, values);
         }
 
-        res.json(result[0]);
-
-    });
-
-});
-
-
-// ===============================
-// ATUALIZAR PERFIL + LOJA
-// ===============================
-router.put('/update-profile', authMiddleware, upload.single('imagem'), (req, res) => {
-
-    const userId = req.user.id;
-    const { username, nomeLoja, categoria } = req.body;
-    const imagem = req.file ? req.file.filename : null;
-
-    // atualizar user
-    const sqlUser = `
-        UPDATE users 
-        SET username = ? 
-        WHERE id = ?
-    `;
-
-    db.query(sqlUser, [username, userId], (err) => {
-
-        if (err) {
-            return res.status(500).json({
-    error: "Erro interno do servidor"
-});
-        }
-
-        // verificar se loja existe
-        db.query(
-            "SELECT id FROM stores WHERE user_id = ?",
-            [userId],
-            (err2, result) => {
-
-                if (err2) {
-                console.log(err2);
-                    return res.status(500).json({
-    error: "Erro interno do servidor"
-});
-                }
-
-                // se não existe loja, cria
-                if (result.length === 0) {
-
-                    const sqlInsert = `
-                        INSERT INTO stores 
-                        (user_id, nome, categoria, imagem)
-                        VALUES (?, ?, ?, ?)
-                    `;
-
-                    db.query(sqlInsert, [
-                        userId,
-                        nomeLoja,
-                        categoria,
-                        imagem
-                    ], (err3) => {
-
-                        if (err3) {
-                            console.log(err2);
-
-return res.status(500).json({
-    error: "Erro interno do servidor"
-});
-                        }
-
-                        return res.json({
-                            message: "Perfil e loja criados com sucesso"
-                        });
-
-                    });
-
-                } else {
-
-                    // atualiza loja existente
-                    let sqlStore;
-                    let valores;
-
-                    if (imagem) {
-
-                        sqlStore = `
-                            UPDATE stores 
-                            SET nome = ?, categoria = ?, imagem = ?
-                            WHERE user_id = ?
-                        `;
-
-                        valores = [
-                            nomeLoja,
-                            categoria,
-                            imagem,
-                            userId
-                        ];
-
-                    } else {
-
-                        sqlStore = `
-                            UPDATE stores 
-                            SET nome = ?, categoria = ?
-                            WHERE user_id = ?
-                        `;
-
-                        valores = [
-                            nomeLoja,
-                            categoria,
-                            userId
-                        ];
-
-                    }
-
-                    db.query(sqlStore, valores, (err4) => {
-
-                        if (err4) {
-                            return res.status(500).json(err4);
-                        }
-
-                        res.json({
-                            message: "Perfil atualizado com sucesso"
-                        });
-
-                    });
-
-                }
-
-            }
-        );
-
-    });
-
+        await connection.commit();
+        res.json({ message: "Perfil e loja atualizados com sucesso" });
+    } catch (err) {
+        await connection.rollback();
+        res.status(500).json({ error: "Erro ao atualizar perfil" });
+    } finally {
+        connection.release();
+    }
 });
 
 module.exports = router;

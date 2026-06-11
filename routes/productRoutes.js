@@ -1,578 +1,135 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const db = require('../config/db');
-const authMiddleware = require('../middlewares/authMiddleware');
-const upload = require('../middlewares/uploadProdutos');
+const db = require("../config/db");
+const authMiddleware = require("../middlewares/authMiddleware");
+const uploadProdutos = require('../middlewares/uploadProdutos');
 
-router.post(
-    '/products',
-    authMiddleware,
-    upload.fields([
-        { name: "imagem", maxCount: 1 },
-        { name: "imagem2", maxCount: 1 },
-        { name: "imagem3", maxCount: 1 }
-    ]),
-    (req, res) => {
+// Helper para validar campos (reutilizável)
+const validarProduto = (data) => {
+    const { nome, descricao, preco, estoque } = data;
+    if (!nome || nome.trim().length < 3) return "Nome deve possuir pelo menos 3 caracteres";
+    if (!descricao || descricao.trim().length < 10) return "Descrição muito curta";
+    if (Number(preco) <= 0) return "Preço inválido";
+    if (Number(estoque) < 0) return "Estoque inválido";
+    return null;
+};
 
-        const userId = req.user.id;
+// 1. CADASTRAR PRODUTO
+router.post("/products", authMiddleware, uploadProdutos.fields([{ name: "imagem", maxCount: 1 }, { name: "imagem2", maxCount: 1 }, { name: "imagem3", maxCount: 1 }]), async (req, res) => {
+    try {
+        const erro = validarProduto(req.body);
+        if (erro) return res.status(400).json({ message: erro });
 
-        const {
-            nome,
-            descricao,
-            preco,
-            preco_antigo,
-            estoque,
-            categoria
-        } = req.body;
+        const [storeResult] = await db.query("SELECT id FROM stores WHERE user_id = ?", [req.user.id]);
+        if (storeResult.length === 0) return res.status(404).json({ message: "Loja não encontrada" });
 
-        if (!nome || nome.trim().length < 3) {
-    return res.status(400).json({
-        message: "Nome deve possuir pelo menos 3 caracteres"
-    });
-}
+        const { nome, descricao, preco, preco_antigo, estoque, categoria } = req.body;
+        const img1 = req.files?.imagem?.[0]?.filename || null;
+        const img2 = req.files?.imagem2?.[0]?.filename || null;
+        const img3 = req.files?.imagem3?.[0]?.filename || null;
 
-if (!descricao || descricao.trim().length < 10) {
-    return res.status(400).json({
-        message: "Descrição muito curta"
-    });
-}
+        await db.query(`INSERT INTO products (nome, descricao, preco, preco_antigo, estoque, imagem, imagem2, imagem3, categoria, store_id) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+            [nome, descricao, preco, preco_antigo, estoque, img1, img2, img3, categoria, storeResult[0].id]);
 
-if (Number(preco) <= 0) {
-    return res.status(400).json({
-        message: "Preço inválido"
-    });
-}
-
-if (Number(estoque) < 0) {
-    return res.status(400).json({
-        message: "Estoque inválido"
-    });
-}
-
-        const imagem = req.files?.imagem
-            ? req.files.imagem[0].filename
-            : null;
-
-        const imagem2 = req.files?.imagem2
-            ? req.files.imagem2[0].filename
-            : null;
-
-        const imagem3 = req.files?.imagem3
-            ? req.files.imagem3[0].filename
-            : null;
-
-        const sqlStore = `
-            SELECT id FROM stores
-            WHERE user_id = ?
-        `;
-
-        db.query(sqlStore, [userId], (err, storeResult) => {
-
-            if(err){
-                console.error(err);
-
-    return res.status(500).json({
-        message: "Erro interno do servidor"
-    });
-            }
-
-            if(storeResult.length === 0){
-                return res.status(404).json({
-                    error: "Loja não encontrada"
-                });
-            }
-
-            const store_id = storeResult[0].id;
-
-            const sql = `
-                INSERT INTO products
-                (
-                    nome,
-                    descricao,
-                    preco,
-                    preco_antigo,
-                    estoque,
-                    imagem,
-                    imagem2,
-                    imagem3,
-                    categoria,
-                    store_id
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `;
-
-            db.query(
-                sql,
-                [
-                    nome,
-                    descricao,
-                    preco,
-                    preco_antigo,
-                    estoque,
-                    imagem,
-                    imagem2,
-                    imagem3,
-                    categoria,
-                    store_id
-                ],
-                (err, result) => {
-
-                    if(err){
-                        console.error(err);
-
-    return res.status(500).json({
-        message: "Erro interno do servidor"
-    });
-                    }
-
-                    res.json({
-                        message: "Produto cadastrado!"
-                    });
-
-                }
-            );
-
-        });
-
-    }
-);
-
-router.get('/products', (req, res) => {
-
-    const { categoria, busca } = req.query;
-
-    let sql = `
-        SELECT
-            products.*,
-            stores.nome AS nomeLoja,
-            COUNT(product_likes.id) AS curtidas
-        FROM products
-        JOIN stores
-            ON products.store_id = stores.id
-        LEFT JOIN product_likes
-            ON product_likes.product_id = products.id
-        WHERE 1=1
-    `;
-
-    let values = [];
-
-    if (categoria) {
-        sql += " AND products.categoria = ?";
-        values.push(categoria);
-    }
-
-    if (busca) {
-        sql += `
-            AND (
-                products.nome LIKE ?
-                OR products.categoria LIKE ?
-                OR stores.nome LIKE ?
-            )
-        `;
-        values.push(`%${busca}%`);
-        values.push(`%${busca}%`);
-        values.push(`%${busca}%`);
-    }
-
-    sql += `
-        GROUP BY products.id
-        ORDER BY products.id DESC
-        LIMIT ? OFFSET ?
-    `;
-
-    const pagina = parseInt(req.query.pagina) || 1;
-    const limite = 30;
-    const offset = (pagina - 1) * limite;
-
-    values.push(limite, offset);
-
-    db.query(sql, values, (err, result) => {
-        if (err) {
-            console.error(err);
-
-    return res.status(500).json({
-        message: "Erro interno do servidor"
-    });
-        }
-
-        res.json(result);
-    });
-});
-
-router.get('/products/:id', (req, res) => {
-
-    const productId = req.params.id;
-
-    const sql = `
-        SELECT
-            products.*,
-            stores.nome AS nomeLoja
-        FROM products
-        JOIN stores
-        ON products.store_id = stores.id
-        WHERE products.id = ?
-    `;
-
-    db.query(sql, [productId], (err, result) => {
-
-        if(err){
-            console.error(err);
-
-    return res.status(500).json({
-        message: "Erro interno do servidor"
-    });
-        }
-
-        if(result.length === 0){
-            return res.status(404).json({
-                error: "Produto não encontrado"
-            });
-        }
-
-        res.json(result[0]);
-
-    });
-
-});
-
-router.get('/stores/:id/products', (req, res) => {
-
-    const storeId = req.params.id;
-
-    const pagina = parseInt(req.query.pagina) || 1;
-    const limite = 15;
-    const offset = (pagina - 1) * limite;
-
-    const sql = `
-        SELECT
-            products.*,
-            COUNT(product_likes.id) AS curtidas
-        FROM products
-        LEFT JOIN product_likes
-            ON product_likes.product_id = products.id
-        WHERE products.store_id = ?
-        GROUP BY products.id
-        ORDER BY products.id DESC
-        LIMIT ? OFFSET ?
-    `;
-
-    db.query(sql, [storeId, limite, offset], (err, result) => {
-        if (err) {
-            console.error(err);
-
-    return res.status(500).json({
-        message: "Erro interno do servidor"
-    });
-        }
-
-        res.json(result);
-    });
-
-});
-
-
-router.put(
-  '/products/:id',
-  authMiddleware,
-  upload.fields([
-    { name: "imagem", maxCount: 1 },
-    { name: "imagem2", maxCount: 1 },
-    { name: "imagem3", maxCount: 1 }
-  ]),
-  (req, res) => {
-
-    const productId = req.params.id;
-    const userId = req.user.id;
-
-    // 1. buscar produto + loja dele
-    const sqlCheck = `
-      SELECT store_id
-      FROM products
-      WHERE id = ?
-    `;
-
-    db.query(sqlCheck, [productId], (err, result) => {
-
-      if (err) {
+        res.json({ message: "Produto cadastrado!" });
+    } catch (err) {
         console.error(err);
+        res.status(500).json({ message: "Erro interno no servidor" });
+    }
+});
 
-    return res.status(500).json({
-        message: "Erro interno do servidor"
-    });
-      }
+// 2. LISTAR PRODUTOS (COM FILTROS)
+router.get("/products", async (req, res) => {
+    try {
+        const { categoria, busca, pagina = 1 } = req.query;
+        let sql = `SELECT p.*, s.nome AS nomeLoja, COUNT(pl.id) AS curtidas FROM products p 
+                   JOIN stores s ON p.store_id = s.id 
+                   LEFT JOIN product_likes pl ON pl.product_id = p.id WHERE 1=1`;
+        let values = [];
 
-      if (result.length === 0) {
-        return res.status(404).json({
-          message: "Produto não encontrado"
-        });
-      }
+        if (categoria) { sql += " AND p.categoria = ?"; values.push(categoria); }
+        if (busca) { sql += " AND (p.nome LIKE ? OR p.categoria LIKE ? OR s.nome LIKE ?)"; values.push(`%${busca}%`, `%${busca}%`, `%${busca}%`); }
 
-      const storeId = result[0].store_id;
+        sql += " GROUP BY p.id ORDER BY p.id DESC LIMIT ? OFFSET ?";
+        values.push(30, (parseInt(pagina) - 1) * 30);
 
-      // 2. verificar dono da loja
-      const sqlOwner = `
-        SELECT user_id
-        FROM stores
-        WHERE id = ?
-      `;
+        const [result] = await db.query(sql, values);
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ message: "Erro ao buscar produtos" });
+    }
+});
 
-      db.query(sqlOwner, [storeId], (err2, storeResult) => {
+// 3. ATUALIZAR PRODUTO
+router.put("/products/:id", authMiddleware, uploadProdutos.fields([{ name: "imagem", maxCount: 1 }, { name: "imagem2", maxCount: 1 }, { name: "imagem3", maxCount: 1 }]), async (req, res) => {
+    try {
+        const [prod] = await db.query("SELECT s.user_id FROM products p JOIN stores s ON p.store_id = s.id WHERE p.id = ?", [req.params.id]);
+        if (!prod.length) return res.status(404).json({ message: "Produto não encontrado" });
+        if (prod[0].user_id !== req.user.id) return res.status(403).json({ message: "Sem permissão" });
 
-        if (err2) {
-          console.error(err2);
+        const erro = validarProduto(req.body);
+        if (erro) return res.status(400).json({ message: erro });
 
-    return res.status(500).json({
-        message: "Erro interno do servidor"
-    });
-        }
+        const { nome, descricao, preco, preco_antigo, estoque, categoria } = req.body;
+        const img1 = req.files?.imagem?.[0]?.filename;
+        const img2 = req.files?.imagem2?.[0]?.filename;
+        const img3 = req.files?.imagem3?.[0]?.filename;
 
-        if (storeResult.length === 0) {
-          return res.status(404).json({
-            message: "Loja não encontrada"
-          });
-        }
+        await db.query(`UPDATE products SET nome=?, descricao=?, preco=?, preco_antigo=?, estoque=?, categoria=?, 
+                        imagem=COALESCE(?, imagem), imagem2=COALESCE(?, imagem2), imagem3=COALESCE(?, imagem3) WHERE id=?`,
+            [nome, descricao, preco, preco_antigo || null, estoque, categoria || null, img1 || null, img2 || null, img3 || null, req.params.id]);
 
-        const ownerId = storeResult[0].user_id;
+        res.json({ message: "Produto atualizado com sucesso!" });
+    } catch (err) {
+        res.status(500).json({ message: "Erro ao atualizar produto" });
+    }
+});
 
-        // 3. BLOQUEIO DE SEGURANÇA
-        if (ownerId !== userId) {
-          return res.status(403).json({
-            message: "Você não tem permissão para editar este produto"
-          });
-        }
+// 4. CURTIDAS (Exemplo de simplificação)
+router.post("/products/:id/like", authMiddleware, async (req, res) => {
+    try {
+        await db.query("INSERT INTO product_likes (user_id, product_id) VALUES (?, ?)", [req.user.id, req.params.id]);
+        res.json({ message: "Produto curtido!" });
+    } catch (err) {
+        if (err.code === "ER_DUP_ENTRY") return res.status(400).json({ message: "Você já curtiu este produto" });
+        res.status(500).json({ message: "Erro interno" });
+    }
+});
 
-        // =========================
-        // 4. SE PASSOU → ATUALIZA
-        // =========================
-
-        const {
-          nome,
-          descricao,
-          preco,
-          preco_antigo,
-          estoque,
-          categoria
-        } = req.body;
-
-        if (!nome || nome.trim().length < 3) {
-    return res.status(400).json({
-        message: "Nome inválido"
-    });
-}
-    if (!descricao || descricao.trim().length < 10) {
-    return res.status(400).json({
-        message: "Descrição muito curta"
-    });
-}
-
-if (Number(preco) <= 0) {
-    return res.status(400).json({
-        message: "Preço inválido"
-    });
-}
-
-if (Number(estoque) < 0) {
-    return res.status(400).json({
-        message: "Estoque inválido"
-    });
-}
-
-
-        const clean = (value) => {
-          if (
-            value === "" ||
-            value === "null" ||
-            value === undefined
-          ) {
-            return null;
-          }
-          return value;
-        };
-
-        const imagem = req.files?.imagem
-          ? req.files.imagem[0].filename
-          : null;
-
-        const imagem2 = req.files?.imagem2
-          ? req.files.imagem2[0].filename
-          : null;
-
-        const imagem3 = req.files?.imagem3
-          ? req.files.imagem3[0].filename
-          : null;
-
-        const sqlUpdate = `
-          UPDATE products
-          SET
-            nome = ?,
-            descricao = ?,
-            preco = ?,
-            preco_antigo = ?,
-            estoque = ?,
-            categoria = ?,
-            imagem = COALESCE(?, imagem),
-            imagem2 = COALESCE(?, imagem2),
-            imagem3 = COALESCE(?, imagem3)
-          WHERE id = ?
-        `;
-
-        db.query(
-          sqlUpdate,
-          [
-            nome,
-            descricao,
-            preco,
-            clean(preco_antigo),
-            estoque,
-            clean(categoria),
-            imagem,
-            imagem2,
-            imagem3,
-            productId
-          ],
-          (err3) => {
-
-            if (err3) {
-              console.error(err3);
-
-        return res.status(500).json({
-            message: "Erro interno do servidor"
-        });
-            }
-
-            return res.json({
-              message: "Produto atualizado com sucesso!"
-            });
-
-          }
-        );
-
-      });
-
-    });
-
-  }
-);
+router.delete('/products/:id/like', authMiddleware, async (req, res) => {
+    try {
+        await db.query("DELETE FROM product_likes WHERE user_id = ? AND product_id = ?", [req.user.id, req.params.id]);
+        res.json({ message: "Like removido!" });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Erro interno do servidor" });
+    }
+});
 
 // =========================
-// CURTIR PRODUTO
+// ROTA: TOTAL DE CURTIDAS
 // =========================
-router.post('/products/:id/like', authMiddleware, (req, res) => {
-
-    const userId = req.user.id;
-    const productId = req.params.id;
-
-    const sql = `
-        INSERT INTO product_likes (user_id, product_id)
-        VALUES (?, ?)
-    `;
-
-    db.query(sql, [userId, productId], (err) => {
-
-        if (err) {
-
-            // já curtiu (UNIQUE KEY)
-            if (err.code === "ER_DUP_ENTRY") {
-                return res.status(400).json({
-                    message: "Você já curtiu este produto"
-                });
-            }
-
-            console.error(err);
-
-    return res.status(500).json({
-        message: "Erro interno do servidor"
-    });
-        }
-
-        res.json({
-            message: "Produto curtido!"
-        });
-
-    });
-
+router.get('/products/:id/likes', async (req, res) => {
+    try {
+        const [result] = await db.query("SELECT COUNT(*) AS total FROM product_likes WHERE product_id = ?", [req.params.id]);
+        res.json({ total: result[0].total });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Erro interno do servidor" });
+    }
 });
 
-router.delete('/products/:id/like', authMiddleware, (req, res) => {
-
-    const userId = req.user.id;
-    const productId = req.params.id;
-
-    const sql = `
-        DELETE FROM product_likes
-        WHERE user_id = ? AND product_id = ?
-    `;
-
-    db.query(sql, [userId, productId], (err) => {
-
-        if (err) {
-            console.error(err);
-
-    return res.status(500).json({
-        message: "Erro interno do servidor"
-    });        }
-
-        res.json({
-            message: "Like removido!"
-        });
-
-    });
-
-});
-
-router.get('/products/:id/likes', (req, res) => {
-
-    const productId = req.params.id;
-
-    const sql = `
-        SELECT COUNT(*) AS total
-        FROM product_likes
-        WHERE product_id = ?
-    `;
-
-    db.query(sql, [productId], (err, result) => {
-
-        if (err) {
-            console.error(err);
-
-    return res.status(500).json({
-        message: "Erro interno do servidor"
-    });        }
-
-        res.json({
-            total: result[0].total
-        });
-
-    });
-
-});
-
-router.get('/products/:id/liked', authMiddleware, (req, res) => {
-
-    const userId = req.user.id;
-    const productId = req.params.id;
-
-    const sql = `
-        SELECT id
-        FROM product_likes
-        WHERE user_id = ? AND product_id = ?
-    `;
-
-    db.query(sql, [userId, productId], (err, result) => {
-
-        if (err) {
-            console.error(err);
-
-    return res.status(500).json({
-        message: "Erro interno do servidor"
-    });        }
-
-        res.json({
-            liked: result.length > 0
-        });
-
-    });
-
+// =========================
+// ROTA: VERIFICAR SE JÁ CURTIU
+// =========================
+router.get('/products/:id/liked', authMiddleware, async (req, res) => {
+    try {
+        const [result] = await db.query("SELECT id FROM product_likes WHERE user_id = ? AND product_id = ?", [req.user.id, req.params.id]);
+        res.json({ liked: result.length > 0 });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Erro interno do servidor" });
+    }
 });
 
 
