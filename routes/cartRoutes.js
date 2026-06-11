@@ -156,6 +156,31 @@ router.post('/cart', authMiddleware, async (req, res) => {
 // ==========================================
 router.get('/cart', authMiddleware, async (req, res) => {
     const userId = req.user.id;
+    // Adicione p.store_id nesta lista de campos selecionados
+    const sql = `
+        SELECT 
+            ci.product_id, 
+            p.nome, 
+            p.preco, 
+            p.imagem, 
+            ci.quantidade, 
+            p.estoque, 
+            s.taxa_entrega, 
+            p.store_id 
+        FROM cart_items ci 
+        JOIN cart c ON c.id = ci.cart_id 
+        JOIN products p ON p.id = ci.product_id 
+        JOIN stores s ON p.store_id = s.id 
+        WHERE c.user_id = ?
+    `;
+    try {
+        const [rows] = await db.query(sql, [userId]);
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: "Erro ao carregar carrinho" });
+    }
+});router.get('/cart', authMiddleware, async (req, res) => {
+    const userId = req.user.id;
     const sql = `SELECT ci.product_id, p.nome, p.preco, p.imagem, ci.quantidade, p.estoque, s.taxa_entrega FROM cart_items ci JOIN cart c ON c.id = ci.cart_id JOIN products p ON p.id = ci.product_id JOIN stores s ON p.store_id = s.id WHERE c.user_id = ?`;
     try {
         const [rows] = await db.query(sql, [userId]);
@@ -167,37 +192,33 @@ router.get('/cart', authMiddleware, async (req, res) => {
 
 
 router.post('/calcular-frete', async (req, res) => {
+    // CEP da loja fixo (o seu)
     const cepLoja = "60349040"; 
-    const cepCliente = req.body.cepCliente ? req.body.cepCliente.toString().replace('-', '') : ""; 
+    const { cepCliente } = req.body;
+    
+    if (!cepCliente) return res.status(400).json({ message: "CEP é obrigatório" });
 
-    if (!cepCliente || cepCliente.length !== 8) {
-        return res.status(400).json({ message: "CEP inválido." });
-    }
+    // Pega os 3 primeiros dígitos para identificar a região/bairro
+    const prefixoLoja = cepLoja.substring(0, 5); 
+    const prefixoCliente = cepCliente.replace('-', '').substring(0, 5);
 
     try {
-        // Usamos o ViaCEP, que é o mais estável do Brasil
-        const { data: dadosLoja } = await axios.get(`https://viacep.com.br/ws/${cepLoja}/json/`);
-        const { data: dadosCliente } = await axios.get(`https://viacep.com.br/ws/${cepCliente}/json/`);
+        let taxa = 0;
 
-        if (dadosCliente.erro) {
-            return res.status(400).json({ message: "CEP do cliente não encontrado." });
-        }
-
-        // Se for o mesmo bairro, taxa fixa. Se for cidade diferente, aumenta.
-        // Isso resolve o problema de falta de lat/long e é muito mais rápido.
-        let taxa = 5.00; // Taxa base
-        if (dadosLoja.bairro !== dadosCliente.bairro) {
-            taxa = 12.00;
-        }
-        if (dadosLoja.localidade !== dadosCliente.localidade) {
+        // Lógica simples:
+        if (prefixoLoja === prefixoCliente) {
+            // Mesmo CEP/Bairro
+            taxa = 10.00;
+        } else {
+            // Vizinho ou outro lugar
             taxa = 25.00;
         }
 
-        res.json({ taxa: taxa, km: "Estimativa baseada em bairro" });
-
+        res.json({ taxa: taxa, tipo: "Entrega Local" });
     } catch (err) {
-        console.error("Erro no ViaCEP:", err.message);
-        res.status(500).json({ message: "Erro ao consultar o frete." });
+        res.status(500).json({ message: "Erro ao calcular" });
     }
 });
+
+
 module.exports = router;

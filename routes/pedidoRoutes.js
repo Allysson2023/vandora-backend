@@ -6,12 +6,19 @@ const { getIo } = require("../utils/socket");
 
 // 1. ROTA: CRIAÇÃO DE PEDIDOS
 router.post("/pedidos", authMiddleware, async (req, res) => {
+
+    // ADICIONE ESTAS LINHAS:
+    console.log("--- DEBUG PEDIDO ---");
+    console.log("Body recebido:", JSON.stringify(req.body, null, 2));
+    console.log("Loja ID original:", req.body.loja_id);
     const usuario_id = req.user.id;
     const { loja_id, produtos, tipoPedido, dadosEntrega } = req.body;
-    
-    // [Validações de entrada mantidas iguais]
-    if (!Number.isInteger(Number(loja_id)) || !Array.isArray(produtos) || produtos.length === 0) {
-        return res.status(400).json({ message: "Dados inválidos" });
+
+    // Converte para inteiro e valida
+    const lojaIdInt = parseInt(loja_id, 10);
+
+    if (isNaN(lojaIdInt) || !Array.isArray(produtos) || produtos.length === 0) {
+        return res.status(400).json({ message: "Dados inválidos de loja ou produtos" });
     }
 
     try {
@@ -22,28 +29,47 @@ router.post("/pedidos", authMiddleware, async (req, res) => {
         const itensParaInserir = produtos.map(item => {
             const p = produtosDoBanco.find(prod => prod.id === Number(item.produto_id));
             if (!p) throw new Error(`Produto ${item.produto_id} não encontrado`);
-            totalCalculado += p.preco * item.quantidade;
+            totalCalculado += Number(p.preco) * Number(item.quantidade);
             return [item.produto_id, item.quantidade, p.preco];
         });
 
-        // Transação
         const connection = await db.getConnection();
         await connection.beginTransaction();
 
         try {
-            const sqlPedido = `INSERT INTO pedidos (usuario_id, loja_id, total, status, tipo_pedido, nome_cliente, endereco, numero, bairro, pagamento, cpf, observacao) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`;
-            const [result] = await connection.query(sqlPedido, [usuario_id, loja_id, totalCalculado, "AGUARDANDO_CONFIRMACAO", tipoPedido, dadosEntrega.nome, dadosEntrega.endereco, dadosEntrega.numero, dadosEntrega.bairro, dadosEntrega.pagamento, dadosEntrega.cpf, dadosEntrega.observacao]);
+            // INSERT EXPLICITO: Define exatamente quais colunas receberão dados
+            const sqlPedido = `
+                INSERT INTO pedidos (
+                    usuario_id, loja_id, total, status, tipo_pedido, 
+                    nome_cliente, endereco, numero, bairro, pagamento, cpf, observacao
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `;
+
+            const [result] = await connection.query(sqlPedido, [
+                usuario_id, 
+                lojaIdInt, 
+                totalCalculado, 
+                "AGUARDANDO_CONFIRMACAO", 
+                tipoPedido, 
+                dadosEntrega.nome, 
+                dadosEntrega.endereco, 
+                dadosEntrega.numero, 
+                dadosEntrega.bairro, 
+                dadosEntrega.pagamento, 
+                dadosEntrega.cpf || null, 
+                dadosEntrega.observacao || null
+            ]);
             
             const pedido_id = result.insertId;
             const itensFinais = itensParaInserir.map(i => [pedido_id, ...i]);
+            
             await connection.query("INSERT INTO pedido_itens (pedido_id, produto_id, quantidade, preco) VALUES ?", [itensFinais]);
 
             await connection.commit();
             connection.release();
 
-            // Socket
             const io = getIo();
-            io.to(`loja_${loja_id}`).emit("novo_pedido", { id: pedido_id, total: totalCalculado });
+            io.to(`loja_${lojaIdInt}`).emit("novo_pedido", { id: pedido_id, total: totalCalculado });
 
             return res.json({ message: "Pedido criado", pedidoId: pedido_id });
         } catch (err) {
@@ -52,23 +78,35 @@ router.post("/pedidos", authMiddleware, async (req, res) => {
             throw err;
         }
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: err.message || "Erro interno" });
+        console.error("Erro ao criar pedido:", err);
+        res.status(500).json({ message: err.message || "Erro interno ao processar pedido" });
     }
 });
 
 // 2. ROTA: BUSCAR PEDIDO POR ID
 router.get("/pedidos/:id", authMiddleware, async (req, res) => {
     try {
-        const [pedidoResult] = await db.query(`SELECT p.*, s.user_id AS dono_loja FROM pedidos p JOIN stores s ON s.id = p.loja_id WHERE p.id = ?`, [req.params.id]);
+        const [pedidoResult] = await db.query(`
+            SELECT p.*, s.nome as loja_nome, s.id as loja_id 
+            FROM pedidos p 
+            JOIN stores s ON s.id = p.loja_id 
+            WHERE p.id = ?`, [req.params.id]);
+
         if (!pedidoResult.length) return res.status(404).json({ message: "Pedido não encontrado" });
 
         const pedido = pedidoResult[0];
-        if (Number(pedido.usuario_id) !== req.user.id && Number(pedido.dono_loja) !== req.user.id) {
-            return res.status(403).json({ message: "Acesso negado" });
-        }
+        
+        pedido.dadosEntrega = {
+            nome: pedido.nome_cliente,
+            endereco: pedido.endereco,
+            numero: pedido.numero,
+            bairro: pedido.bairro,
+            pagamento: pedido.pagamento,
+            cpf: pedido.cpf
+        };
 
-        const [itens] = await db.query("SELECT pi.*, pr.nome FROM pedido_itens pi JOIN products pr ON pr.id = pi.produto_id WHERE pi.pedido_id = ?", [req.params.id]);
+        const [itens] = await db.query("SELECT pi.*, pr.nome, pr.imagem FROM pedido_itens pi JOIN products pr ON pr.id = pi.produto_id WHERE pi.pedido_id = ?", [req.params.id]);
+        
         res.json({ pedido, itens });
     } catch (err) {
         res.status(500).json({ message: "Erro ao buscar pedido" });
@@ -92,11 +130,9 @@ router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
     const { id } = req.params;
     
     try {
-        // Validações e Permissões...
         const [perm] = await db.query("SELECT p.status FROM pedidos p JOIN stores s ON s.id = p.loja_id WHERE p.id = ? AND s.user_id = ?", [id, req.user.id]);
         if (!perm.length) return res.status(403).json({ message: "Sem permissão" });
 
-        // Se for finalizado, inicia transação de estoque
         if (status === "finalizado") {
             const connection = await db.getConnection();
             await connection.beginTransaction();
