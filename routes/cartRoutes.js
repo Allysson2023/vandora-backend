@@ -2,10 +2,31 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
 const authMiddleware = require('../middlewares/authMiddleware');
+const axios = require('axios');
 
-// ==========================================
-// LIMPAR TODO O CARRINHO
-// ==========================================
+const NodeGeocoder = require('node-geocoder');
+
+const geocoder = NodeGeocoder({ 
+    provider: 'openstreetmap',
+    httpAdapter: 'fetch',
+    headers: {
+        // Use apenas letras, números, hífen e um e-mail válido (sem o http://)
+        'User-Agent': 'MeuAppDelivery-1.0 (allyssoncarlos.ac21@gmail.com)' 
+    }
+});
+
+function calcularDistancia(coord1, coord2) {
+    if (!coord1 || !coord2) return 0;
+    const R = 6371; 
+    const dLat = (coord2.latitude - coord1.latitude) * (Math.PI / 180);
+    const dLon = (coord2.longitude - coord1.longitude) * (Math.PI / 180);
+    const a = 
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(coord1.latitude * (Math.PI / 180)) * Math.cos(coord2.latitude * (Math.PI / 180)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; 
+}
+
 router.delete("/cart/clear", authMiddleware, (req, res) => {
     const userId = req.user.id;
 
@@ -25,9 +46,6 @@ router.delete("/cart/clear", authMiddleware, (req, res) => {
     });
 });
 
-// ==========================================
-// REMOVER PRODUTO ESPECÍFICO DO CARRINHO
-// ==========================================
 router.delete("/cart/delete/:id", authMiddleware, (req, res) => {
     const userId = req.user.id;
     const productId = Number(req.params.id);
@@ -57,9 +75,6 @@ router.delete("/cart/delete/:id", authMiddleware, (req, res) => {
     });
 });
 
-// ==========================================
-// DIMINUIR QUANTIDADE DE UM ITEM (-1)
-// ==========================================
 router.put("/cart/decrease/:id", authMiddleware, (req, res) => {
     const userId = req.user.id;
     const productId = Number(req.params.id);
@@ -317,13 +332,21 @@ router.get('/cart', authMiddleware, (req, res) => {
             products.imagem,
             cart_items.quantidade,
             products.estoque,
-            products.store_id
+            products.store_id,
+            stores.aceita_entrega,
+            stores.aceita_retirada,
+            stores.taxa_entrega,
+            stores.endereco,
+            stores.numero,
+            stores.bairro,
+            stores.cidade,
+            stores.cep
         FROM cart_items
         JOIN cart ON cart.id = cart_items.cart_id
         JOIN products ON products.id = cart_items.product_id
+        JOIN stores ON products.store_id = stores.id
         WHERE cart.user_id = ?
     `;
-
     db.query(sql, [userId], (err, result) => {
         if (err) {
             console.error("Erro ao listar itens do carrinho:", err);
@@ -331,6 +354,37 @@ router.get('/cart', authMiddleware, (req, res) => {
         }
         res.json(result);
     });
+});
+
+router.post('/calcular-frete', async (req, res) => {
+    const cepLoja = "60349040"; 
+    const cepCliente = req.body.cepCliente ? req.body.cepCliente.toString().replace('-', '') : ""; 
+
+    if (!cepCliente || cepCliente.length !== 8) {
+        return res.status(400).json({ message: "CEP inválido." });
+    }
+
+    try {
+        // Usando o geocoder que você já tinha configurado no topo
+        const resLoja = await geocoder.geocode(`${cepLoja}, Brasil`);
+        const resCliente = await geocoder.geocode(`${cepCliente}, Brasil`);
+
+        if (resLoja.length === 0 || resCliente.length === 0) {
+            throw new Error("Não foi possível encontrar as coordenadas para os CEPs informados.");
+        }
+
+        const coord1 = { latitude: resLoja[0].latitude, longitude: resLoja[0].longitude };
+        const coord2 = { latitude: resCliente[0].latitude, longitude: resCliente[0].longitude };
+
+        const kmReal = (calcularDistancia(coord1, coord2) * 1.4).toFixed(1);
+        const taxa = (kmReal * 1.50).toFixed(2);
+
+        res.json({ taxa: Number(taxa), km: kmReal });
+
+    } catch (err) {
+        console.error("Erro no Geocoder:", err.message);
+        res.status(400).json({ message: "Erro ao converter CEP para localização. Tente outro CEP." });
+    }
 });
 
 module.exports = router;
