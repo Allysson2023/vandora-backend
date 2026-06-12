@@ -14,12 +14,21 @@ router.post("/pedidos", authMiddleware, async (req, res) => {
     const usuario_id = req.user.id;
     const { loja_id, produtos, tipoPedido, dadosEntrega } = req.body;
 
-    // Converte para inteiro e valida
-    const lojaIdInt = parseInt(loja_id, 10);
-
-    if (isNaN(lojaIdInt) || !Array.isArray(produtos) || produtos.length === 0) {
-        return res.status(400).json({ message: "Dados inválidos de loja ou produtos" });
+    // 1. Validação estrita de campos obrigatórios
+    if (!dadosEntrega || !dadosEntrega.nome || !dadosEntrega.pagamento) {
+        return res.status(400).json({ message: "Dados de entrega ou pagamento faltando." });
     }
+
+    if (tipoPedido === 'entrega' && (!dadosEntrega.endereco || !dadosEntrega.numero || !dadosEntrega.bairro)) {
+        return res.status(400).json({ message: "Endereço completo é obrigatório para entrega." });
+    }
+
+    if (tipoPedido === 'retirada' && !dadosEntrega.cpf) {
+        return res.status(400).json({ message: "CPF é obrigatório para retirada." });
+    }
+    if (!Array.isArray(produtos) || produtos.length === 0) {
+    return res.status(400).json({ message: "Carrinho vazio." });
+}
 
     try {
         const idsProdutos = produtos.map(p => p.produto_id);
