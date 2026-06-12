@@ -159,4 +159,51 @@ router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
     }
 });
 
+// ROTA: BUSCAR PEDIDOS DA LOJA DO USUÁRIO LOGADO
+router.get("/loja/pedidos", authMiddleware, async (req, res) => {
+    try {
+        // O SQL abaixo garante que o usuário só verá pedidos 
+        // de lojas onde ele é o dono (s.user_id = req.user.id)
+        const sql = `
+            SELECT p.* FROM pedidos p 
+            JOIN stores s ON s.id = p.loja_id 
+            WHERE s.user_id = ? 
+            ORDER BY p.id DESC
+        `;
+        
+        const [pedidos] = await db.query(sql, [req.user.id]);
+        
+        res.json(pedidos);
+    } catch (err) {
+        console.error("Erro ao buscar pedidos da loja:", err);
+        res.status(500).json({ message: "Erro interno ao buscar pedidos" });
+    }
+});
+
+
+
+// ROTA: DETALHES DO PEDIDO (PARA O DONO DA LOJA)
+// No seu rotas.js
+// Agora a rota recebe o ID da loja como parâmetro
+router.get("/loja/:loja_id/pedidos", authMiddleware, async (req, res) => {
+    const { loja_id } = req.params;
+    try {
+        // SQL: busca pedidos desta loja E verifica se o usuário logado é o dono dela
+        const sql = `
+            SELECT p.* FROM pedidos p 
+            JOIN stores s ON s.id = p.loja_id 
+            WHERE p.loja_id = ? AND s.user_id = ? 
+            ORDER BY p.id DESC
+        `;
+        
+        const [pedidos] = await db.query(sql, [loja_id, req.user.id]);
+        res.json(pedidos);
+    } catch (err) {
+        console.error("Erro:", err);
+        res.status(500).json({ message: "Erro ao buscar pedidos da loja" });
+    }
+});
+
+
+
 module.exports = router;
