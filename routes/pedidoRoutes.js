@@ -14,6 +14,10 @@ router.post("/pedidos", authMiddleware, async (req, res) => {
     const usuario_id = req.user.id;
     const { loja_id, produtos, tipoPedido, dadosEntrega } = req.body;
 
+    if (!Array.isArray(produtos) || produtos.length === 0) {
+    return res.status(400).json({ message: "Carrinho vazio." });
+}
+
     // 1. Validação estrita de campos obrigatórios
     if (!dadosEntrega || !dadosEntrega.nome || !dadosEntrega.pagamento) {
         return res.status(400).json({ message: "Dados de entrega ou pagamento faltando." });
@@ -26,9 +30,12 @@ router.post("/pedidos", authMiddleware, async (req, res) => {
     if (tipoPedido === 'retirada' && !dadosEntrega.cpf) {
         return res.status(400).json({ message: "CPF é obrigatório para retirada." });
     }
-    if (!Array.isArray(produtos) || produtos.length === 0) {
-    return res.status(400).json({ message: "Carrinho vazio." });
+    
+    const lojaIdInt = parseInt(loja_id, 10);
+if (isNaN(lojaIdInt)) {
+    return res.status(400).json({ message: "ID da loja inválido" });
 }
+    
 
     try {
         const idsProdutos = produtos.map(p => p.produto_id);
