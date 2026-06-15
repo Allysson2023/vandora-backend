@@ -203,4 +203,19 @@ router.put('/update-profile', authMiddleware,uploadPerfil.single('imagem'), asyn
     }
 });
 
+// ROTA PARA BUSCAR DADOS DO USUÁRIO PELO ID
+router.get('/users/:id', authMiddleware, async (req, res) => {
+    try {
+        const [users] = await db.query("SELECT id, username FROM users WHERE id = ?", [req.params.id]);
+        
+        if (users.length === 0) {
+            return res.status(404).json({ error: "Usuário não encontrado" });
+        }
+        
+        res.json(users[0]);
+    } catch (err) {
+        res.status(500).json({ error: "Erro ao buscar usuário" });
+    }
+});
+
 module.exports = router;

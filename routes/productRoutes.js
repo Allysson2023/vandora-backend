@@ -8,7 +8,7 @@ const uploadProdutos = require('../middlewares/uploadProdutos');
 const validarProduto = (data) => {
     const { nome, descricao, preco, estoque } = data;
     if (!nome || nome.trim().length < 3) return "Nome deve possuir pelo menos 3 caracteres";
-    if (!descricao || descricao.trim().length < 10) return "Descrição muito curta";
+    if (!descricao || descricao.trim().length < 1) return "Descrição muito curta";
     if (Number(preco) <= 0) return "Preço inválido";
     if (Number(estoque) < 0) return "Estoque inválido";
     return null;

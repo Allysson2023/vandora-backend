@@ -42,6 +42,7 @@ if (isNaN(lojaIdInt)) {
         const [produtosDoBanco] = await db.query("SELECT id, preco FROM products WHERE id IN (?)", [idsProdutos]);
 
         let totalCalculado = 0;
+        
         const itensParaInserir = produtos.map(item => {
             const p = produtosDoBanco.find(prod => prod.id === Number(item.produto_id));
             if (!p) throw new Error(`Produto ${item.produto_id} não encontrado`);
@@ -49,32 +50,41 @@ if (isNaN(lojaIdInt)) {
             return [item.produto_id, item.quantidade, p.preco];
         });
 
+
+// 2. ADICIONE O CÁLCULO DA TAXA
+const taxaServico = totalCalculado * 0.03; // 3%
+const totalFinal = totalCalculado + taxaServico ;
+
+
         const connection = await db.getConnection();
         await connection.beginTransaction();
 
         try {
             // INSERT EXPLICITO: Define exatamente quais colunas receberão dados
             const sqlPedido = `
-                INSERT INTO pedidos (
-                    usuario_id, loja_id, total, status, tipo_pedido, 
-                    nome_cliente, endereco, numero, bairro, pagamento, cpf, observacao
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `;
+    INSERT INTO pedidos (
+        usuario_id, loja_id, total, taxa_servico, total_final,
+        status, tipo_pedido, nome_cliente, endereco, numero, bairro, 
+        pagamento, cpf, observacao
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`;
 
             const [result] = await connection.query(sqlPedido, [
-                usuario_id, 
-                lojaIdInt, 
-                totalCalculado, 
-                "AGUARDANDO_CONFIRMACAO", 
-                tipoPedido, 
-                dadosEntrega.nome, 
-                dadosEntrega.endereco, 
-                dadosEntrega.numero, 
-                dadosEntrega.bairro, 
-                dadosEntrega.pagamento, 
-                dadosEntrega.cpf || null, 
-                dadosEntrega.observacao || null
-            ]);
+    usuario_id, 
+    lojaIdInt, 
+    totalCalculado,
+    taxaServico,
+    totalFinal,
+    "AGUARDANDO_CONFIRMACAO", 
+    tipoPedido, 
+    dadosEntrega.nome, 
+    dadosEntrega.endereco, 
+    dadosEntrega.numero, 
+    dadosEntrega.bairro, 
+    dadosEntrega.pagamento, 
+    dadosEntrega.cpf || null, 
+    dadosEntrega.observacao || null
+]);
             
             const pedido_id = result.insertId;
             const itensFinais = itensParaInserir.map(i => [pedido_id, ...i]);
