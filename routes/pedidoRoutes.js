@@ -5,44 +5,42 @@ const authMiddleware = require("../middlewares/authMiddleware");
 const { getIo } = require("../utils/socket");
 
 // 1. ROTA: CRIAÇÃO DE PEDIDOS
+// 1. ROTA: CRIAÇÃO DE PEDIDOS
 router.post("/pedidos", authMiddleware, async (req, res) => {
-
-    // ADICIONE ESTAS LINHAS:
-    console.log("--- DEBUG PEDIDO ---");
+    console.log("--- PEDIDO ---");
     console.log("Body recebido:", JSON.stringify(req.body, null, 2));
-    console.log("Loja ID original:", req.body.loja_id);
+    
     const usuario_id = req.user.id;
     const { loja_id, produtos, tipoPedido, dadosEntrega } = req.body;
 
     if (!Array.isArray(produtos) || produtos.length === 0) {
-    return res.status(400).json({ message: "Carrinho vazio." });
-}
+        return res.status(400).json({ message: "Carrinho vazio." });
+    }
 
-    // 1. Validação estrita de campos obrigatórios
+    // Validações
     if (!dadosEntrega || !dadosEntrega.nome || !dadosEntrega.pagamento) {
         return res.status(400).json({ message: "Dados de entrega ou pagamento faltando." });
     }
-
     if (tipoPedido === 'entrega' && (!dadosEntrega.endereco || !dadosEntrega.numero || !dadosEntrega.bairro)) {
         return res.status(400).json({ message: "Endereço completo é obrigatório para entrega." });
     }
-
     if (tipoPedido === 'retirada' && !dadosEntrega.cpf) {
         return res.status(400).json({ message: "CPF é obrigatório para retirada." });
     }
     
     const lojaIdInt = parseInt(loja_id, 10);
-if (isNaN(lojaIdInt)) {
-    return res.status(400).json({ message: "ID da loja inválido" });
-}
-    
+    if (isNaN(lojaIdInt)) return res.status(400).json({ message: "ID da loja inválido" });
 
     try {
+        // 1. Busca produtos e regras de desconto da loja
         const idsProdutos = produtos.map(p => p.produto_id);
         const [produtosDoBanco] = await db.query("SELECT id, preco FROM products WHERE id IN (?)", [idsProdutos]);
+        
+        // NOVO: Busca configurações de desconto
+        const [configLoja] = await db.query("SELECT desconto_ativo, valor_minimo_compra, tipo_desconto, valor_desconto FROM stores WHERE id = ?", [lojaIdInt]);
+        const config = configLoja[0];
 
         let totalCalculado = 0;
-        
         const itensParaInserir = produtos.map(item => {
             const p = produtosDoBanco.find(prod => prod.id === Number(item.produto_id));
             if (!p) throw new Error(`Produto ${item.produto_id} não encontrado`);
@@ -50,41 +48,50 @@ if (isNaN(lojaIdInt)) {
             return [item.produto_id, item.quantidade, p.preco];
         });
 
+        // 2. Cálculo do Desconto (Lógica aplicada pelo servidor)
+        let descontoAplicado = 0;
+        if (config && config.desconto_ativo && totalCalculado >= config.valor_minimo_compra) {
+            if (config.tipo_desconto === 'fixo') {
+                descontoAplicado = Number(config.valor_desconto);
+            } else if (config.tipo_desconto === 'porcentagem') {
+                descontoAplicado = totalCalculado * (Number(config.valor_desconto) / 100);
+            }
+        }
 
-// 2. ADICIONE O CÁLCULO DA TAXA
-const taxaServico = totalCalculado * 0.03; // 3%
-const totalFinal = totalCalculado + taxaServico ;
-
+        // 3. Cálculos Finais
+        const taxaServico = totalCalculado * 0.03; // 3%
+        const totalFinal = (totalCalculado - descontoAplicado) + taxaServico;
 
         const connection = await db.getConnection();
         await connection.beginTransaction();
 
         try {
-            // INSERT EXPLICITO: Define exatamente quais colunas receberão dados
+            // INSERT agora incluindo 'desconto'
             const sqlPedido = `
-    INSERT INTO pedidos (
-        usuario_id, loja_id, total, taxa_servico, total_final,
-        status, tipo_pedido, nome_cliente, endereco, numero, bairro, 
-        pagamento, cpf, observacao
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`;
+                INSERT INTO pedidos (
+                    usuario_id, loja_id, total, taxa_servico, desconto, total_final,
+                    status, tipo_pedido, nome_cliente, endereco, numero, bairro, 
+                    pagamento, cpf, observacao
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `;
 
             const [result] = await connection.query(sqlPedido, [
-    usuario_id, 
-    lojaIdInt, 
-    totalCalculado,
-    taxaServico,
-    totalFinal,
-    "AGUARDANDO_CONFIRMACAO", 
-    tipoPedido, 
-    dadosEntrega.nome, 
-    dadosEntrega.endereco, 
-    dadosEntrega.numero, 
-    dadosEntrega.bairro, 
-    dadosEntrega.pagamento, 
-    dadosEntrega.cpf || null, 
-    dadosEntrega.observacao || null
-]);
+                usuario_id, 
+                lojaIdInt, 
+                totalCalculado,
+                taxaServico,
+                descontoAplicado, // Valor do desconto calculado
+                totalFinal,       // Total final após desconto
+                "AGUARDANDO_CONFIRMACAO", 
+                tipoPedido, 
+                dadosEntrega.nome, 
+                dadosEntrega.endereco, 
+                dadosEntrega.numero, 
+                dadosEntrega.bairro, 
+                dadosEntrega.pagamento, 
+                dadosEntrega.cpf || null, 
+                dadosEntrega.observacao || null
+            ]);
             
             const pedido_id = result.insertId;
             const itensFinais = itensParaInserir.map(i => [pedido_id, ...i]);
@@ -95,7 +102,7 @@ const totalFinal = totalCalculado + taxaServico ;
             connection.release();
 
             const io = getIo();
-            io.to(`loja_${lojaIdInt}`).emit("novo_pedido", { id: pedido_id, total: totalCalculado });
+            io.to(`loja_${lojaIdInt}`).emit("novo_pedido", { id: pedido_id, total: totalFinal });
 
             return res.json({ message: "Pedido criado", pedidoId: pedido_id });
         } catch (err) {
@@ -230,6 +237,31 @@ router.get("/loja/:loja_id/pedidos", authMiddleware, async (req, res) => {
         res.status(500).json({ message: "Erro ao buscar pedidos da loja" });
     }
 });
+
+// ROTA: BUSCAR FATURAMENTO DO DIA (Seguro)
+router.get("/loja/faturamento-hoje", authMiddleware, async (req, res) => {
+    try {
+        // O banco de dados faz a soma. O usuário só recebe o resultado final.
+        // Verificamos que o usuário logado (req.user.id) é dono da loja.
+        const sql = `
+            SELECT SUM(p.total_final) as total_hoje 
+            FROM pedidos p 
+            JOIN stores s ON s.id = p.loja_id 
+            WHERE s.user_id = ? 
+            AND p.status = 'finalizado' 
+            AND DATE(p.created_at) = CURDATE()
+        `;
+        
+        const [result] = await db.query(sql, [req.user.id]);
+        
+        // Retorna 0 se não houver faturamento
+        res.json({ total_hoje: result[0].total_hoje || 0 });
+    } catch (err) {
+        console.error("Erro ao buscar faturamento:", err);
+        res.status(500).json({ message: "Erro ao calcular faturamento" });
+    }
+});
+
 
 
 

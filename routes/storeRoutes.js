@@ -622,4 +622,59 @@ router.get("/favoritos/quantidade", authMiddleware, async (req, res) => {
     }
 });
 
+// ===============================
+// CONFIGURAÇÕES DE DESCONTO DA LOJA
+// ===============================
+
+// 1. Rota para buscar as configurações atuais (para preencher o formulário no front)
+router.get('/stores/:id/desconto-config', authMiddleware, checkOwner, async (req, res) => {
+    try {
+        const [rows] = await db.query(
+            "SELECT desconto_ativo, valor_minimo_compra, tipo_desconto, valor_desconto FROM stores WHERE id = ?", 
+            [req.storeId]
+        );
+        res.json(rows[0]);
+    } catch (err) {
+        res.status(500).json({ message: "Erro ao buscar configurações de desconto" });
+    }
+});
+
+// 2. Rota para o lojista SALVAR as novas configurações
+router.put('/stores/:id/desconto-config', authMiddleware, checkOwner, async (req, res) => {
+    try {
+        const { desconto_ativo, valor_minimo_compra, tipo_desconto, valor_desconto } = req.body;
+
+        await db.query(
+            `UPDATE stores 
+             SET desconto_ativo = ?, valor_minimo_compra = ?, tipo_desconto = ?, valor_desconto = ? 
+             WHERE id = ?`,
+            [desconto_ativo ? 1 : 0, valor_minimo_compra, tipo_desconto, valor_desconto, req.storeId]
+        );
+
+        res.json({ message: "Configurações de desconto atualizadas com sucesso!" });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Erro ao salvar configurações" });
+    }
+});
+
+// Rota pública para usuários logados (qualquer um pode consultar o desconto de uma loja)
+router.get('/stores/:id/public/desconto-config', authMiddleware, async (req, res) => {
+    try {
+        const storeId = parseInt(req.params.id);
+        if (isNaN(storeId)) return res.status(400).json({ message: "ID inválido" });
+
+        const [rows] = await db.query(
+            "SELECT desconto_ativo, valor_minimo_compra, tipo_desconto, valor_desconto FROM stores WHERE id = ?", 
+            [storeId]
+        );
+        
+        if (rows.length === 0) return res.status(404).json({ message: "Loja não encontrada" });
+        
+        res.json(rows[0]);
+    } catch (err) {
+        res.status(500).json({ message: "Erro ao buscar configurações de desconto" });
+    }
+});
+
 module.exports = router;
