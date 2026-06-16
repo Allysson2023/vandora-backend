@@ -166,12 +166,19 @@ router.get('/stores/:id/dashboard', authMiddleware, checkOwner, async (req, res)
             [top], [menos], [estoque], [totalProd], [totalPed], [ultimo]
         ] = await Promise.all([
             db.query("SELECT meta_mensal FROM stores WHERE id = ?", [storeId]),
-            db.query("SELECT DATE(created_at) AS data, COALESCE(SUM(total), 0) AS total FROM pedidos WHERE loja_id = ? AND status = 'finalizado' AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) GROUP BY DATE(created_at) ORDER BY data ASC", [storeId]),
+
+            db.query("SELECT DATE(created_at) AS data, COALESCE(SUM(total_final), 0) AS total FROM pedidos WHERE loja_id = ? AND status = 'finalizado' AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) GROUP BY DATE(created_at) ORDER BY data ASC", [storeId]),
+
             db.query("SELECT DATE(created_at) AS data, COUNT(*) AS total FROM pedidos WHERE loja_id = ? AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) GROUP BY DATE(created_at) ORDER BY data ASC", [storeId]),
-            db.query("SELECT COALESCE(SUM(total), 0) AS total FROM pedidos WHERE loja_id = ? AND status = 'finalizado' AND DATE(created_at) = CURDATE()", [storeId]),
-            db.query("SELECT COALESCE(SUM(total), 0) AS total FROM pedidos WHERE loja_id = ? AND status = 'finalizado' AND MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE())", [storeId]),
-            db.query("SELECT COALESCE(SUM(total), 0) AS total FROM pedidos WHERE loja_id = ? AND status = 'finalizado' AND YEAR(created_at) = YEAR(CURDATE())", [storeId]),
+
+            db.query("SELECT COALESCE(SUM(total_final), 0) AS total FROM pedidos WHERE loja_id = ? AND status = 'finalizado' AND DATE(created_at) = CURDATE()", [storeId]),
+
+            db.query("SELECT COALESCE(SUM(total_final), 0) AS total FROM pedidos WHERE loja_id = ? AND status = 'finalizado' AND MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE())", [storeId]),
+
+            db.query("SELECT COALESCE(SUM(total_final), 0) AS total FROM pedidos WHERE loja_id = ? AND status = 'finalizado' AND YEAR(created_at) = YEAR(CURDATE())", [storeId]),
+            
             db.query("SELECT p.id, p.nome, SUM(pi.quantidade) AS quantidade FROM pedido_itens pi JOIN products p ON p.id = pi.produto_id JOIN pedidos ped ON ped.id = pi.pedido_id WHERE ped.loja_id = ? GROUP BY p.id ORDER BY quantidade DESC LIMIT 5", [storeId]),
+
             db.query("SELECT p.id, p.nome, SUM(pi.quantidade) AS quantidade FROM pedido_itens pi JOIN products p ON p.id = pi.produto_id JOIN pedidos ped ON ped.id = pi.pedido_id WHERE ped.loja_id = ? GROUP BY p.id ORDER BY quantidade ASC LIMIT 5", [storeId]),
             db.query("SELECT id, nome, estoque FROM products WHERE store_id = ? AND estoque <= 5", [storeId]),
             db.query("SELECT COUNT(*) AS total FROM products WHERE store_id = ?", [storeId]),
@@ -258,7 +265,7 @@ router.get('/stores/:id/mais-vendidos', authMiddleware, checkOwner, async (req, 
 router.get('/stores/:id/financeiro', authMiddleware, checkOwner, async (req, res) => {
     try {
         const [result] = await db.query(
-            "SELECT DATE(created_at) as data, SUM(total) as total FROM pedidos WHERE loja_id = ? AND status = 'finalizado' GROUP BY DATE(created_at) ORDER BY data ASC",
+            "SELECT DATE(created_at) as data, SUM(total_final) as total FROM pedidos WHERE loja_id = ? AND status = 'finalizado' GROUP BY DATE(created_at) ORDER BY data ASC",
             [req.storeId]
         );
         res.json(result);
@@ -322,9 +329,9 @@ router.get("/funcionario/loja-dashboard/:id", authMiddleware, async (req, res) =
 
         const sql = `
             SELECT s.id, s.nome,
-            COALESCE((SELECT SUM(total) FROM pedidos WHERE loja_id = s.id AND status = 'finalizado' AND DATE(created_at) = CURDATE()), 0) AS faturamentoHoje,
-            COALESCE((SELECT SUM(total) FROM pedidos WHERE loja_id = s.id AND status = 'finalizado' AND MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE())), 0) AS faturamentoMes,
-            COALESCE((SELECT SUM(total) FROM pedidos WHERE loja_id = s.id AND status = 'finalizado' AND YEAR(created_at) = YEAR(CURDATE())), 0) AS faturamentoAno,
+            COALESCE((SELECT SUM(total_final) FROM pedidos WHERE loja_id = s.id AND status = 'finalizado' AND DATE(created_at) = CURDATE()), 0) AS faturamentoHoje,
+            COALESCE((SELECT SUM(total_final) FROM pedidos WHERE loja_id = s.id AND status = 'finalizado' AND MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE())), 0) AS faturamentoMes,
+            COALESCE((SELECT SUM(total_final) FROM pedidos WHERE loja_id = s.id AND status = 'finalizado' AND YEAR(created_at) = YEAR(CURDATE())), 0) AS faturamentoAno,
             COALESCE((SELECT COUNT(*) FROM products WHERE store_id = s.id), 0) AS total_produtos,
             COALESCE((SELECT COUNT(*) FROM pedidos WHERE loja_id = s.id), 0) AS total_pedidos
             FROM stores s WHERE s.id = ? AND s.funcionario_id = ? LIMIT 1
@@ -352,7 +359,7 @@ router.get("/funcionario/top-lojas", authMiddleware, async (req, res) => {
     try {
         const [result] = await db.query(`
             SELECT s.id, s.nome, s.categoria,
-            COALESCE(SUM(CASE WHEN p.status = 'finalizado' AND DATE(p.created_at) = CURDATE() THEN p.total ELSE 0 END), 0) AS faturamentoHoje,
+            COALESCE(SUM(CASE WHEN p.status = 'finalizado' AND DATE(p.created_at) = CURDATE() THEN p.total_final ELSE 0 END), 0) AS faturamentoHoje,
             COUNT(DISTINCT CASE WHEN DATE(p.created_at) = CURDATE() THEN p.id END) AS pedidosHoje
             FROM stores s
             LEFT JOIN pedidos p ON p.loja_id = s.id

@@ -128,7 +128,8 @@ router.get("/pedidos/:id", authMiddleware, async (req, res) => {
             numero: pedido.numero,
             bairro: pedido.bairro,
             pagamento: pedido.pagamento,
-            cpf: pedido.cpf
+            cpf: pedido.cpf,
+            observacao: pedido.observacao
         };
 
         const [itens] = await db.query("SELECT pi.*, pr.nome, pr.imagem FROM pedido_itens pi JOIN products pr ON pr.id = pi.produto_id WHERE pi.pedido_id = ?", [req.params.id]);
