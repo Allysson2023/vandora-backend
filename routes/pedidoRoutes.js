@@ -206,8 +206,16 @@ router.get("/loja/pedidos", authMiddleware, async (req, res) => {
         `;
         
         const [pedidos] = await db.query(sql, [req.user.id]);
+
+        const pedidosFormatados = pedidos.map(pedido => ({
+            ...pedido,
+            // Converte o UTC do banco para Brasília (BRT)
+            data_formatada: new Date(pedido.created_at).toLocaleString("pt-BR", {
+                timeZone: "America/Sao_Paulo"
+            })
+        }));
         
-        res.json(pedidos);
+        res.json(pedidosFormatados);
     } catch (err) {
         console.error("Erro ao buscar pedidos da loja:", err);
         res.status(500).json({ message: "Erro interno ao buscar pedidos" });
