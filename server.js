@@ -14,8 +14,21 @@ app.use(
   })
 );
 
+const allowedOrigins = [
+  "http://localhost:5173", 
+  "https://vandoraapp.netlify.app" // SUBSTITUA PELA SUA URL REAL DO NETLIFY
+];
+
 app.use(cors({
-  origin: "http://localhost:5173",
+  origin: function (origin, callback) {
+    // Permite requisições sem origem (como ferramentas de postman ou mobile)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Bloqueado pelo CORS'));
+    }
+  },
   credentials: true
 }));
 
