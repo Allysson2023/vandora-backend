@@ -15,7 +15,7 @@ app.use(
 );
 
 const allowedOrigins = [
-  "http://localhost:5173", 
+    "http://localhost:5173",
   "https://vandoraapp.netlify.app" // SUBSTITUA PELA SUA URL REAL DO NETLIFY
 ];
 
