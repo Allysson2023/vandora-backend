@@ -179,15 +179,6 @@ router.get('/cart', authMiddleware, async (req, res) => {
     } catch (err) {
         res.status(500).json({ error: "Erro ao carregar carrinho" });
     }
-});router.get('/cart', authMiddleware, async (req, res) => {
-    const userId = req.user.id;
-    const sql = `SELECT ci.product_id, p.nome, p.preco, p.imagem, ci.quantidade, p.estoque, s.taxa_entrega FROM cart_items ci JOIN cart c ON c.id = ci.cart_id JOIN products p ON p.id = ci.product_id JOIN stores s ON p.store_id = s.id WHERE c.user_id = ?`;
-    try {
-        const [rows] = await db.query(sql, [userId]);
-        res.json(rows);
-    } catch (err) {
-        res.status(500).json({ error: "Erro ao carregar carrinho" });
-    }
 });
 
 
