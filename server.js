@@ -91,53 +91,24 @@ socketUtil.setIo(io);
 
 // SOCKET CONNECTION
 io.on("connection", (socket) => {
-
     console.log("Cliente conectado:", socket.id);
-    console.log("USER SOCKET COUNT:", io.engine.clientsCount);
-    socket.on("disconnect", () => {
-    console.log("Cliente saiu:", socket.id);
-});
 
-    // usuário geral
-    socket.on("join", (userId) => {
-        socket.join(`user_${userId}`);
+    // Mantenha o join_loja assim:
+    socket.on("join_loja", async (userId) => {
+        // Buscamos a loja atrelada ao usuário
+        db.query("SELECT id FROM stores WHERE user_id = ?", [userId], (err, result) => {
+            if (err || result.length === 0) return;
+            
+            const lojaId = result[0].id;
+            socket.join(`loja_${lojaId}`);
+            console.log(`✅ Socket ${socket.id} entrou na sala: loja_${lojaId}`);
+        });
     });
 
-    // loja geral
-    socket.on("join_loja", (userId) => {
-
-    db.query(
-        "SELECT id FROM stores WHERE user_id = ?",
-        [userId],
-        (err, result) => {
-
-            if (err) return;
-
-            if (result.length > 0) {
-                const lojaId = result[0].id;
-
-                socket.join(`loja_${lojaId}`);
-
-                console.log("Entrou na loja:", lojaId);
-            }
-        }
-    );
+    socket.on("disconnect", () => {
+        console.log("Cliente saiu:", socket.id);
+    });
 });
-
-    // chat específico (CLIENTE + LOJA)
-    socket.on("entrar_chat", ({ chatId }) => {
-
-    socket.join(`chat_${chatId}`);
-
-    console.log(`💬 Entrou no chat: chat_${chatId}`);
-});
-
-socket.on("sair_chat", ({ chatId }) => {
-    socket.leave(`chat_${chatId}`);
-});
-
-});
-
 const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, () => {
