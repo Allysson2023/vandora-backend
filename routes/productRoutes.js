@@ -124,9 +124,9 @@ router.get("/products/:id", async (req, res) => {
     try {
         const { id } = req.params;
         
-        // Buscamos o produto e também o nome da loja associada
+        // Adicionamos p.store_id na busca
         const [rows] = await db.query(`
-            SELECT p.*, s.nome AS nomeLoja 
+            SELECT p.*, s.nome AS nomeLoja, p.store_id 
             FROM products p 
             JOIN stores s ON p.store_id = s.id 
             WHERE p.id = ?`, [id]);
