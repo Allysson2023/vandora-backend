@@ -176,7 +176,9 @@ router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
                     const [up] = await connection.query("UPDATE products SET estoque = estoque - ? WHERE id = ? AND estoque >= ?", [item.quantidade, item.produto_id, item.quantidade]);
                     if (up.affectedRows === 0) throw new Error("Estoque insuficiente");
                 }
-                await connection.query("UPDATE pedidos SET status = 'finalizado' WHERE id = ?", [id]);
+                
+                await connection.query("UPDATE pedidos SET status = 'finalizado', updated_at = NOW() WHERE id = ?", [id]);
+                
                 await connection.commit();
                 connection.release();
             } catch (err) {
@@ -253,15 +255,15 @@ router.get("/loja/faturamento-hoje", authMiddleware, async (req, res) => {
 
         const sql = `
             SELECT SUM(p.total_final) as total_hoje 
-            FROM pedidos p 
-            JOIN stores s ON s.id = p.loja_id 
-            WHERE s.user_id = ? 
-            AND p.status = 'finalizado' 
-            AND DATE(CONVERT_TZ(p.created_at, '+00:00', '-03:00')) = CURDATE()
+FROM pedidos p 
+JOIN stores s ON s.id = p.loja_id 
+WHERE s.user_id = ? 
+AND LOWER(p.status) = 'finalizado' 
+AND DATE(CONVERT_TZ(p.updated_at, '+00:00', '-03:00')) = CURDATE()
         `;
         
         const [result] = await db.query(sql, [req.user.id]);
-        
+        console.log("Resultado bruto da Query:", result);
         // Se o resultado for null, o Number() vira 0. Se for um número, ele mantém.
         const valor = Number(result[0].total_hoje) || 0;
         
