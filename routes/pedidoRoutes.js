@@ -177,7 +177,10 @@ router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
                     if (up.affectedRows === 0) throw new Error("Estoque insuficiente");
                 }
                 
-                await connection.query("UPDATE pedidos SET status = 'finalizado', updated_at = NOW() WHERE id = ?", [id]);
+                await connection.query(
+    "UPDATE pedidos SET status = 'finalizado', updated_at = CONVERT_TZ(NOW(), '+00:00', '-03:00') WHERE id = ?", 
+    [id]
+);
                 
                 await connection.commit();
                 connection.release();
