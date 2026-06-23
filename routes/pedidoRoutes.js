@@ -254,22 +254,19 @@ router.get("/loja/:loja_id/pedidos", authMiddleware, async (req, res) => {
 // ROTA: BUSCAR FATURAMENTO DO DIA (Seguro)
 router.get("/loja/faturamento-hoje", authMiddleware, async (req, res) => {
     try {
-        // Usamos CONVERT_TZ para garantir que a comparação seja feita no horário de Brasília
+        // Usamos UTC_TIMESTAMP e ajustamos para -3 horas para comparar 
+        // o "hoje" do Brasil com o "updated_at" convertido para o Brasil
         const sql = `
             SELECT SUM(p.total_final) as total_hoje 
             FROM pedidos p 
             JOIN stores s ON s.id = p.loja_id 
             WHERE s.user_id = ? 
             AND LOWER(p.status) = 'finalizado' 
-            AND DATE(CONVERT_TZ(p.updated_at, '+00:00', '-03:00')) = CURDATE()
+            AND DATE(CONVERT_TZ(p.updated_at, '+00:00', '-03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '-03:00'))
         `;
         
         const [result] = await db.query(sql, [req.user.id]);
         
-        // Log para conferência
-        console.log("DEBUG: Data de hoje no servidor:", new Date().toLocaleDateString());
-        console.log("DEBUG: Resultado da soma:", result[0].total_hoje);
-
         const valor = Number(result[0].total_hoje) || 0;
         res.json({ total_hoje: valor });
     } catch (err) {
