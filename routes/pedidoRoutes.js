@@ -180,7 +180,7 @@ router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
                 
                 // Grava o status e o updated_at para que o faturamento reconheça
                 await connection.query(
-                    "UPDATE pedidos SET status = ?, updated_at = CONVERT_TZ(NOW(), '+00:00', '-03:00') WHERE id = ?", 
+                    "UPDATE pedidos SET status = ?, updated_at = CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '-03:00') WHERE id = ?", 
                     [status, id]
                 );
                 
