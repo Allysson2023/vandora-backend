@@ -249,20 +249,26 @@ router.get("/loja/:loja_id/pedidos", authMiddleware, async (req, res) => {
 // ROTA: BUSCAR FATURAMENTO DO DIA (Seguro)
 router.get("/loja/faturamento-hoje", authMiddleware, async (req, res) => {
     try {
-        // O banco de dados faz a soma. O usuário só recebe o resultado final.
-        // Verificamos que o usuário logado (req.user.id) é dono da loja.
+        // Pega a data atual no fuso de Brasília
+        const dataBrasil = new Date().toLocaleString("en-CA", { 
+            timeZone: "America/Sao_Paulo",
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }); // Formato: YYYY-MM-DD
+
         const sql = `
             SELECT SUM(p.total_final) as total_hoje 
             FROM pedidos p 
             JOIN stores s ON s.id = p.loja_id 
             WHERE s.user_id = ? 
             AND p.status = 'finalizado' 
-            AND DATE(p.created_at) = CURDATE()
+            AND DATE(p.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo') = ?
         `;
         
-        const [result] = await db.query(sql, [req.user.id]);
+        // Passa o ID do usuário e a data calculada pelo Node
+        const [result] = await db.query(sql, [req.user.id, dataBrasil]);
         
-        // Retorna 0 se não houver faturamento
         res.json({ total_hoje: result[0].total_hoje || 0 });
     } catch (err) {
         console.error("Erro ao buscar faturamento:", err);
