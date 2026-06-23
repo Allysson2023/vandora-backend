@@ -160,13 +160,14 @@ router.get("/meus-pedidos", authMiddleware, async (req, res) => {
 
 // 6. ROTA: ATUALIZAÇÃO DE STATUS (ESTOQUE)
 router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
-    const { status } = req.body;
+    const { status } = req.body; // Agora recebe: "aceito", "separação", "em Rota", "finalizado", "cancelado"
     const { id } = req.params;
     
     try {
         const [perm] = await db.query("SELECT p.status FROM pedidos p JOIN stores s ON s.id = p.loja_id WHERE p.id = ? AND s.user_id = ?", [id, req.user.id]);
         if (!perm.length) return res.status(403).json({ message: "Sem permissão" });
 
+        // Se for "finalizado", processa estoque e atualiza com o horário de Brasília
         if (status === "finalizado") {
             const connection = await db.getConnection();
             await connection.beginTransaction();
@@ -177,10 +178,11 @@ router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
                     if (up.affectedRows === 0) throw new Error("Estoque insuficiente");
                 }
                 
+                // Grava o status e o updated_at para que o faturamento reconheça
                 await connection.query(
-    "UPDATE pedidos SET status = 'finalizado', updated_at = CONVERT_TZ(NOW(), '+00:00', '-03:00') WHERE id = ?", 
-    [id]
-);
+                    "UPDATE pedidos SET status = ?, updated_at = CONVERT_TZ(NOW(), '+00:00', '-03:00') WHERE id = ?", 
+                    [status, id]
+                );
                 
                 await connection.commit();
                 connection.release();
@@ -190,9 +192,10 @@ router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
                 return res.status(400).json({ message: err.message });
             }
         } else {
+            // Apenas atualiza o status, SEM atualizar o updated_at para não afetar o faturamento
             await db.query("UPDATE pedidos SET status = ? WHERE id = ?", [status, id]);
         }
-        res.json({ message: "Status atualizado" });
+        res.json({ message: "Status atualizado com sucesso" });
     } catch (err) {
         res.status(500).json({ message: "Erro interno" });
     }
