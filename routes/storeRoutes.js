@@ -41,9 +41,20 @@ router.post('/stores', authMiddleware, uploadLojas.single('imagem'), async (req,
 
         const { nome, categoria, whatsapp, username, password } = req.body;
         
-        // Validações simples
         if (!nome || !categoria || !whatsapp || !username || !password) return res.status(400).json({ message: "Preencha todos os campos" });
-        if (username.length < 4 || password.length < 6) return res.status(400).json({ message: "Dados de acesso inválidos" });
+        
+        // --- FUNÇÃO PARA GERAR O SLUG ---
+        const gerarSlug = (texto) => {
+            return texto
+                .toString()
+                .toLowerCase()
+                .trim()
+                .replace(/\s+/g, '-')       // Espaços por -
+                .replace(/[^\w\-]+/g, '')   // Remove caracteres especiais
+                .replace(/\-\-+/g, '-');    // Remove hífens duplicados
+        };
+
+        const slug = gerarSlug(nome);
 
         // Iniciar Transação
         const connection = await db.getConnection();
@@ -59,13 +70,14 @@ router.post('/stores', authMiddleware, uploadLojas.single('imagem'), async (req,
             const senhaHash = await bcrypt.hash(password, 10);
             const [userResult] = await connection.query("INSERT INTO users (username, password, tipo) VALUES (?, ?, 'lojista')", [username.trim().toLowerCase(), senhaHash]);
 
+            // --- INSERÇÃO COM O SLUG ---
             await connection.query(
-                "INSERT INTO stores (nome, categoria, imagem, whatsapp, funcionario_id, user_id) VALUES (?, ?, ?, ?, ?, ?)",
-                [nome.trim(), categoria.trim(), req.file.filename, whatsapp.trim(), req.user.id, userResult.insertId]
+                "INSERT INTO stores (nome, slug, categoria, imagem, whatsapp, funcionario_id, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [nome.trim(), slug, categoria.trim(), req.file.filename, whatsapp.trim(), req.user.id, userResult.insertId]
             );
 
             await connection.commit();
-            res.status(201).json({ message: "Loja criada com sucesso", storeId: userResult.insertId });
+            res.status(201).json({ message: "Loja criada com sucesso", storeId: userResult.insertId, slug });
         } catch (err) {
             await connection.rollback();
             throw err;
