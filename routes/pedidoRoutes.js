@@ -251,22 +251,25 @@ router.get("/loja/:loja_id/pedidos", authMiddleware, async (req, res) => {
 // ROTA: BUSCAR FATURAMENTO DO DIA (Seguro)
 router.get("/loja/faturamento-hoje", authMiddleware, async (req, res) => {
     try {
-        
-
+        // Usamos o CURDATE() direto, pois ele pega a data do sistema do servidor.
+        // Se o seu servidor estiver em UTC, o "hoje" dele começa às 21h de ontem (de Brasília).
+        // Isso resolve o problema de o SQL não achar a data por causa do fuso.
         const sql = `
             SELECT SUM(p.total_final) as total_hoje 
-FROM pedidos p 
-JOIN stores s ON s.id = p.loja_id 
-WHERE s.user_id = ? 
-AND LOWER(p.status) = 'finalizado' 
-AND DATE(CONVERT_TZ(p.updated_at, '+00:00', '-03:00')) = CURDATE()
+            FROM pedidos p 
+            JOIN stores s ON s.id = p.loja_id 
+            WHERE s.user_id = ? 
+            AND LOWER(p.status) = 'finalizado' 
+            AND DATE(p.updated_at) = CURDATE()
         `;
         
         const [result] = await db.query(sql, [req.user.id]);
-        console.log("Resultado bruto da Query:", result);
-        // Se o resultado for null, o Number() vira 0. Se for um número, ele mantém.
-        const valor = Number(result[0].total_hoje) || 0;
         
+        // Log para debug
+        console.log("SQL executado para faturamento:", sql);
+        console.log("Resultado da query:", result[0].total_hoje);
+
+        const valor = Number(result[0].total_hoje) || 0;
         res.json({ total_hoje: valor });
     } catch (err) {
         console.error("Erro ao buscar faturamento:", err);
