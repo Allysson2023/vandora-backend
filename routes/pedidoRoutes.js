@@ -249,13 +249,7 @@ router.get("/loja/:loja_id/pedidos", authMiddleware, async (req, res) => {
 // ROTA: BUSCAR FATURAMENTO DO DIA (Seguro)
 router.get("/loja/faturamento-hoje", authMiddleware, async (req, res) => {
     try {
-        // Pega a data atual no fuso de Brasília
-        const dataBrasil = new Date().toLocaleString("en-CA", { 
-            timeZone: "America/Sao_Paulo",
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit'
-        }); // Formato: YYYY-MM-DD
+        
 
         const sql = `
             SELECT SUM(p.total_final) as total_hoje 
@@ -263,13 +257,15 @@ router.get("/loja/faturamento-hoje", authMiddleware, async (req, res) => {
             JOIN stores s ON s.id = p.loja_id 
             WHERE s.user_id = ? 
             AND p.status = 'finalizado' 
-            AND DATE(p.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo') = ?
+            AND DATE(CONVERT_TZ(p.created_at, '+00:00', '-03:00')) = CURDATE()
         `;
         
-        // Passa o ID do usuário e a data calculada pelo Node
-        const [result] = await db.query(sql, [req.user.id, dataBrasil]);
+        const [result] = await db.query(sql, [req.user.id]);
         
-        res.json({ total_hoje: result[0].total_hoje || 0 });
+        // Se o resultado for null, o Number() vira 0. Se for um número, ele mantém.
+        const valor = Number(result[0].total_hoje) || 0;
+        
+        res.json({ total_hoje: valor });
     } catch (err) {
         console.error("Erro ao buscar faturamento:", err);
         res.status(500).json({ message: "Erro ao calcular faturamento" });
