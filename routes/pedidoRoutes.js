@@ -158,75 +158,60 @@ router.get("/meus-pedidos", authMiddleware, async (req, res) => {
     }
 });
 
-// 6. ROTA: ATUALIZAÇÃO DE STATUS (ESTOQUE)
+// 6. ROTA: ATUALIZAÇÃO DE STATUS (ESTOQUE) - VERSÃO ESTÁVEL
 router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
     const { status } = req.body;
     const { id } = req.params;
     
     try {
-        // 1. Buscamos o cliente do pedido E validamos se a loja pertence ao lojista logado
-        const [pedidos] = await db.query(`
-            SELECT p.user_id as cliente_id 
-            FROM pedidos p 
-            JOIN stores s ON s.id = p.loja_id 
-            WHERE p.id = ? AND s.user_id = ?`, [id, req.user.id]);
-
-        if (pedidos.length === 0) {
-            return res.status(403).json({ message: "Sem permissão ou pedido não encontrado" });
+        // 1. Verifica permissão
+        const [perm] = await db.query(
+            "SELECT p.user_id FROM pedidos p JOIN stores s ON s.id = p.loja_id WHERE p.id = ? AND s.user_id = ?", 
+            [id, req.user.id]
+        );
+        
+        if (!perm.length) {
+            return res.status(403).json({ message: "Sem permissão" });
         }
 
-        const clienteId = pedidos[0].cliente_id;
-
-        // 2. Lógica de Atualização (Stock)
+        // 2. Lógica de Atualização
         if (status === "finalizado") {
             const connection = await db.getConnection();
             await connection.beginTransaction();
             try {
                 const [itens] = await connection.query("SELECT produto_id, quantidade FROM pedido_itens WHERE pedido_id = ?", [id]);
+                
                 for (const item of itens) {
-                    const [up] = await connection.query("UPDATE products SET estoque = estoque - ? WHERE id = ? AND estoque >= ?", [item.quantidade, item.produto_id, item.quantidade]);
+                    const [up] = await connection.query(
+                        "UPDATE products SET estoque = estoque - ? WHERE id = ? AND estoque >= ?", 
+                        [item.quantidade, item.produto_id, item.quantidade]
+                    );
                     if (up.affectedRows === 0) throw new Error("Estoque insuficiente");
                 }
-                await connection.query("UPDATE pedidos SET status = ?, updated_at = CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '-03:00') WHERE id = ?", [status, id]);
+                
+                await connection.query(
+                    "UPDATE pedidos SET status = ?, updated_at = CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '-03:00') WHERE id = ?", 
+                    [status, id]
+                );
+                
                 await connection.commit();
                 connection.release();
             } catch (err) {
                 await connection.rollback();
                 connection.release();
-                throw err; // Repassa o erro para o catch principal
+                return res.status(400).json({ message: err.message });
             }
         } else {
             await db.query("UPDATE pedidos SET status = ? WHERE id = ?", [status, id]);
         }
 
-        // 3. Notificação (Agora garantimos que clienteId existe)
-        if (clienteId) {
-            const titulo = "Status do Pedido Atualizado";
-            const mensagem = `Seu pedido #${id} agora está: ${status}`;
-
-            // Verifique se o INSERT tem os 4 campos e 4 valores
-            await db.query(
-                "INSERT INTO notifications (user_id, titulo, mensagem, pedido_id) VALUES (?, ?, ?, ?)", 
-                [clienteId, titulo, mensagem, id]
-            );
-
-            // Tenta emitir via socket, mas não quebra a rota se falhar
-            try {
-                const io = getIo();
-                if (io) {
-                    io.to(`user_${clienteId}`).emit("nova_notificacao", {
-                        titulo, mensagem, pedido_id: id, created_at: new Date()
-                    });
-                }
-            } catch (socketErr) {
-                console.error("Erro no Socket:", socketErr);
-            }
-        }
-
+        // --- NOTIFICAÇÃO REMOVIDA PARA RESTAURAR O FUNCIONAMENTO ---
+        
         res.json({ message: "Status atualizado com sucesso" });
+        
     } catch (err) {
-        console.error("ERRO FINAL:", err);
-        res.status(500).json({ message: "Erro interno", error: err.message });
+        console.error("ERRO NO BACKEND:", err);
+        res.status(500).json({ message: "Erro interno ao atualizar status" });
     }
 });
 
