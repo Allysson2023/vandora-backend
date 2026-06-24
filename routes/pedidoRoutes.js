@@ -160,14 +160,17 @@ router.get("/meus-pedidos", authMiddleware, async (req, res) => {
 
 // 6. ROTA: ATUALIZAÇÃO DE STATUS (ESTOQUE)
 router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
-    const { status } = req.body; // Agora recebe: "aceito", "separação", "em Rota", "finalizado", "cancelado"
+    const { status } = req.body;
     const { id } = req.params;
     
     try {
-        const [perm] = await db.query("SELECT p.status FROM pedidos p JOIN stores s ON s.id = p.loja_id WHERE p.id = ? AND s.user_id = ?", [id, req.user.id]);
+        // 1. Verifica permissão
+        const [perm] = await db.query("SELECT p.user_id FROM pedidos p JOIN stores s ON s.id = p.loja_id WHERE p.id = ? AND s.user_id = ?", [id, req.user.id]);
         if (!perm.length) return res.status(403).json({ message: "Sem permissão" });
 
-        // Se for "finalizado", processa estoque e atualiza com o horário de Brasília
+        const clienteId = perm[0].user_id;
+
+        // 2. Lógica de Atualização
         if (status === "finalizado") {
             const connection = await db.getConnection();
             await connection.beginTransaction();
@@ -178,11 +181,7 @@ router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
                     if (up.affectedRows === 0) throw new Error("Estoque insuficiente");
                 }
                 
-                // Grava o status e o updated_at para que o faturamento reconheça
-                await connection.query(
-                    "UPDATE pedidos SET status = ?, updated_at = CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '-03:00') WHERE id = ?", 
-                    [status, id]
-                );
+                await connection.query("UPDATE pedidos SET status = ?, updated_at = CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '-03:00') WHERE id = ?", [status, id]);
                 
                 await connection.commit();
                 connection.release();
@@ -192,11 +191,27 @@ router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
                 return res.status(400).json({ message: err.message });
             }
         } else {
-            // Apenas atualiza o status, SEM atualizar o updated_at para não afetar o faturamento
             await db.query("UPDATE pedidos SET status = ? WHERE id = ?", [status, id]);
         }
+
+        // 3. APÓS O SUCESSO NO BANCO: Dispara a notificação
+        const titulo = "Status do Pedido Atualizado";
+        const mensagem = `Seu pedido #${id} agora está: ${status}`;
+
+        await db.query("INSERT INTO notifications (user_id, titulo, mensagem, pedido_id) VALUES (?, ?, ?, ?)", [clienteId, titulo, mensagem, id]);
+
+        if (req.io) {
+            req.io.to(`user_${clienteId}`).emit("nova_notificacao", {
+                titulo,
+                mensagem,
+                pedido_id: id,
+                created_at: new Date()
+            });
+        }
+
         res.json({ message: "Status atualizado com sucesso" });
     } catch (err) {
+        console.error(err);
         res.status(500).json({ message: "Erro interno" });
     }
 });
