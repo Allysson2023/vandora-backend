@@ -211,8 +211,13 @@ router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
 
         res.json({ message: "Status atualizado com sucesso" });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Erro interno" });
+        // Isso vai fazer o erro aparecer no seu console do navegador
+        console.error("ERRO NO BACKEND:", err);
+        res.status(500).json({ 
+            message: "Erro no servidor", 
+            error: err.message, 
+            stack: err.stack 
+        });
     }
 });
 
