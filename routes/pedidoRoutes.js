@@ -164,13 +164,20 @@ router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
     const { id } = req.params;
     
     try {
-        // 1. Verifica permissão
-        const [perm] = await db.query("SELECT p.user_id FROM pedidos p JOIN stores s ON s.id = p.loja_id WHERE p.id = ? AND s.user_id = ?", [id, req.user.id]);
-        if (!perm.length) return res.status(403).json({ message: "Sem permissão" });
+        // 1. Buscamos o cliente do pedido E validamos se a loja pertence ao lojista logado
+        const [pedidos] = await db.query(`
+            SELECT p.user_id as cliente_id 
+            FROM pedidos p 
+            JOIN stores s ON s.id = p.loja_id 
+            WHERE p.id = ? AND s.user_id = ?`, [id, req.user.id]);
 
-        const clienteId = perm[0].user_id;
+        if (pedidos.length === 0) {
+            return res.status(403).json({ message: "Sem permissão ou pedido não encontrado" });
+        }
 
-        // 2. Lógica de Atualização
+        const clienteId = pedidos[0].cliente_id;
+
+        // 2. Lógica de Atualização (Stock)
         if (status === "finalizado") {
             const connection = await db.getConnection();
             await connection.beginTransaction();
@@ -180,44 +187,46 @@ router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
                     const [up] = await connection.query("UPDATE products SET estoque = estoque - ? WHERE id = ? AND estoque >= ?", [item.quantidade, item.produto_id, item.quantidade]);
                     if (up.affectedRows === 0) throw new Error("Estoque insuficiente");
                 }
-                
                 await connection.query("UPDATE pedidos SET status = ?, updated_at = CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '-03:00') WHERE id = ?", [status, id]);
-                
                 await connection.commit();
                 connection.release();
             } catch (err) {
                 await connection.rollback();
                 connection.release();
-                return res.status(400).json({ message: err.message });
+                throw err; // Repassa o erro para o catch principal
             }
         } else {
             await db.query("UPDATE pedidos SET status = ? WHERE id = ?", [status, id]);
         }
 
-        // 3. APÓS O SUCESSO NO BANCO: Dispara a notificação
-        const titulo = "Status do Pedido Atualizado";
-        const mensagem = `Seu pedido #${id} agora está: ${status}`;
+        // 3. Notificação (Agora garantimos que clienteId existe)
+        if (clienteId) {
+            const titulo = "Status do Pedido Atualizado";
+            const mensagem = `Seu pedido #${id} agora está: ${status}`;
 
-        await db.query("INSERT INTO notifications (user_id, titulo, mensagem, pedido_id) VALUES (?, ?, ?, ?)", [clienteId, titulo, mensagem, id]);
+            // Verifique se o INSERT tem os 4 campos e 4 valores
+            await db.query(
+                "INSERT INTO notifications (user_id, titulo, mensagem, pedido_id) VALUES (?, ?, ?, ?)", 
+                [clienteId, titulo, mensagem, id]
+            );
 
-        if (req.io) {
-            req.io.to(`user_${clienteId}`).emit("nova_notificacao", {
-                titulo,
-                mensagem,
-                pedido_id: id,
-                created_at: new Date()
-            });
+            // Tenta emitir via socket, mas não quebra a rota se falhar
+            try {
+                const io = getIo();
+                if (io) {
+                    io.to(`user_${clienteId}`).emit("nova_notificacao", {
+                        titulo, mensagem, pedido_id: id, created_at: new Date()
+                    });
+                }
+            } catch (socketErr) {
+                console.error("Erro no Socket:", socketErr);
+            }
         }
 
         res.json({ message: "Status atualizado com sucesso" });
     } catch (err) {
-        // Isso vai fazer o erro aparecer no seu console do navegador
-        console.error("ERRO NO BACKEND:", err);
-        res.status(500).json({ 
-            message: "Erro no servidor", 
-            error: err.message, 
-            stack: err.stack 
-        });
+        console.error("ERRO FINAL:", err);
+        res.status(500).json({ message: "Erro interno", error: err.message });
     }
 });
 
