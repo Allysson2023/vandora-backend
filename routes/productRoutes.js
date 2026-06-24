@@ -82,9 +82,9 @@ router.get("/stores/:id/products", async (req, res) => {
 // 2. LISTAR PRODUTOS (COM FILTROS - CORRIGIDO PARA SQL MODE)
 router.get("/products", async (req, res) => {
     try {
-        const { category_id, busca, pagina = 1 } = req.query;
+        // Mudamos 'category_id' para 'categoria' (nome)
+        const { categoria, busca, pagina = 1 } = req.query; 
         
-        // A consulta foi alterada para incluir s.nome e c.nome no GROUP BY
         let sql = `SELECT p.*, s.nome AS nomeLoja, c.nome AS nomeCategoria, COUNT(pl.id) AS curtidas 
                    FROM products p 
                    JOIN stores s ON p.store_id = s.id 
@@ -92,13 +92,17 @@ router.get("/products", async (req, res) => {
                    LEFT JOIN product_likes pl ON pl.product_id = p.id WHERE 1=1`;
         let values = [];
 
-        if (category_id) { sql += " AND p.category_id = ?"; values.push(category_id); }
+        // ALTERAÇÃO AQUI: Filtramos pelo NOME da categoria (c.nome)
+        if (categoria) { 
+            sql += " AND c.nome = ?"; 
+            values.push(categoria); 
+        }
+        
         if (busca) { 
             sql += " AND (p.nome LIKE ? OR c.nome LIKE ? OR s.nome LIKE ?)"; 
             values.push(`%${busca}%`, `%${busca}%`, `%${busca}%`); 
         }
 
-        // CORREÇÃO: Agrupamos pelo ID do produto E pelas colunas que aparecem no SELECT
         sql += " GROUP BY p.id, s.nome, c.nome ORDER BY p.id DESC LIMIT ? OFFSET ?";
         values.push(30, (parseInt(pagina) - 1) * 30);
 
