@@ -164,7 +164,7 @@ router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
     const { id } = req.params;
     
     try {
-        // 1. Verifica permissão usando a coluna correta 'usuario_id'
+        // 1. Verifica permissão
         const [perm] = await db.query(
             "SELECT p.usuario_id FROM pedidos p JOIN stores s ON s.id = p.loja_id WHERE p.id = ? AND s.user_id = ?", 
             [id, req.user.id]
@@ -174,12 +174,13 @@ router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
             return res.status(403).json({ message: "Sem permissão" });
         }
 
+        const clienteId = perm[0].usuario_id;
+
         // 2. Lógica de Atualização
         if (status === "finalizado") {
             const connection = await db.getConnection();
             await connection.beginTransaction();
             try {
-                // Busca itens para baixar estoque
                 const [itens] = await connection.query("SELECT produto_id, quantidade FROM pedido_itens WHERE pedido_id = ?", [id]);
                 
                 for (const item of itens) {
@@ -187,13 +188,9 @@ router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
                         "UPDATE products SET estoque = estoque - ? WHERE id = ? AND estoque >= ?", 
                         [item.quantidade, item.produto_id, item.quantidade]
                     );
-                    
-                    if (up.affectedRows === 0) {
-                        throw new Error("Estoque insuficiente para o produto ID: " + item.produto_id);
-                    }
+                    if (up.affectedRows === 0) throw new Error("Estoque insuficiente");
                 }
                 
-                // Atualiza status do pedido
                 await connection.query(
                     "UPDATE pedidos SET status = ?, updated_at = CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '-03:00') WHERE id = ?", 
                     [status, id]
@@ -207,11 +204,31 @@ router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
                 return res.status(400).json({ message: err.message });
             }
         } else {
-            // Atualização simples para outros status (aceito, recusado, etc)
             await db.query("UPDATE pedidos SET status = ? WHERE id = ?", [status, id]);
         }
 
-        // Resposta de sucesso
+        // 3. DISPARO DA NOTIFICAÇÃO (ISOLADO E SEGURO)
+        try {
+            const io = getIo();
+            if (io && clienteId) {
+                // Emite para o socket
+                io.to(`user_${clienteId}`).emit("nova_notificacao", {
+                    titulo: "Status do Pedido Atualizado",
+                    mensagem: `Seu pedido #${id} agora está: ${status}`,
+                    pedido_id: id,
+                    created_at: new Date()
+                });
+
+                // Salva no banco (Opcional: Verifique se sua tabela 'notifications' existe)
+                await db.query(
+                    "INSERT INTO notifications (user_id, titulo, mensagem, pedido_id) VALUES (?, ?, ?, ?)", 
+                    [clienteId, "Status do Pedido Atualizado", `Seu pedido #${id} agora está: ${status}`, id]
+                );
+            }
+        } catch (socketError) {
+            console.error("Aviso: Notificação falhou, mas pedido foi processado:", socketError);
+        }
+
         res.json({ message: "Status atualizado com sucesso" });
         
     } catch (err) {

@@ -105,6 +105,12 @@ io.on("connection", (socket) => {
         });
     });
 
+    // 🔥 ADICIONE ESTE NOVO BLOCO PARA O USUÁRIO COMUM
+    socket.on("join", (room) => {
+        socket.join(room); // Ex: user_123
+        console.log(`✅ Usuário entrou na sala: ${room}`);
+    });
+
     socket.on("disconnect", () => {
         console.log("Cliente saiu:", socket.id);
     });
