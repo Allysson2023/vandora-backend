@@ -210,23 +210,29 @@ router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
         // 3. DISPARO DA NOTIFICAÇÃO (ISOLADO E SEGURO)
         try {
             const io = getIo();
-            if (io && clienteId) {
-                // Emite para o socket
-                io.to(`user_${clienteId}`).emit("nova_notificacao", {
+            const nomeSala = `user_${clienteId}`;
+            
+            console.log(`📡 [DEBUG] Tentando enviar notificação para a sala: ${nomeSala}`);
+            
+            if (io) {
+                io.to(nomeSala).emit("nova_notificacao", {
                     titulo: "Status do Pedido Atualizado",
                     mensagem: `Seu pedido #${id} agora está: ${status}`,
                     pedido_id: id,
                     created_at: new Date()
                 });
 
-                // Salva no banco (Opcional: Verifique se sua tabela 'notifications' existe)
+                console.log("📡 [DEBUG] Emitido com sucesso!");
+
                 await db.query(
                     "INSERT INTO notifications (user_id, titulo, mensagem, pedido_id) VALUES (?, ?, ?, ?)", 
                     [clienteId, "Status do Pedido Atualizado", `Seu pedido #${id} agora está: ${status}`, id]
                 );
+            } else {
+                console.log("⚠️ [DEBUG] IO não encontrado!");
             }
         } catch (socketError) {
-            console.error("Aviso: Notificação falhou, mas pedido foi processado:", socketError);
+            console.error("Aviso: Notificação falhou:", socketError);
         }
 
         res.json({ message: "Status atualizado com sucesso" });
