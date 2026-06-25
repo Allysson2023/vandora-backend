@@ -158,15 +158,15 @@ router.get("/meus-pedidos", authMiddleware, async (req, res) => {
     }
 });
 
-// 6. ROTA: ATUALIZAÇÃO DE STATUS (ESTOQUE) - VERSÃO ESTÁVEL
+// 6. ROTA: ATUALIZAÇÃO DE STATUS (ESTOQUE)
 router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
     const { status } = req.body;
     const { id } = req.params;
     
     try {
-        // 1. Verifica permissão
+        // 1. Verifica permissão usando a coluna correta 'usuario_id'
         const [perm] = await db.query(
-            "SELECT p.user_id FROM pedidos p JOIN stores s ON s.id = p.loja_id WHERE p.id = ? AND s.user_id = ?", 
+            "SELECT p.usuario_id FROM pedidos p JOIN stores s ON s.id = p.loja_id WHERE p.id = ? AND s.user_id = ?", 
             [id, req.user.id]
         );
         
@@ -179,6 +179,7 @@ router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
             const connection = await db.getConnection();
             await connection.beginTransaction();
             try {
+                // Busca itens para baixar estoque
                 const [itens] = await connection.query("SELECT produto_id, quantidade FROM pedido_itens WHERE pedido_id = ?", [id]);
                 
                 for (const item of itens) {
@@ -186,9 +187,13 @@ router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
                         "UPDATE products SET estoque = estoque - ? WHERE id = ? AND estoque >= ?", 
                         [item.quantidade, item.produto_id, item.quantidade]
                     );
-                    if (up.affectedRows === 0) throw new Error("Estoque insuficiente");
+                    
+                    if (up.affectedRows === 0) {
+                        throw new Error("Estoque insuficiente para o produto ID: " + item.produto_id);
+                    }
                 }
                 
+                // Atualiza status do pedido
                 await connection.query(
                     "UPDATE pedidos SET status = ?, updated_at = CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '-03:00') WHERE id = ?", 
                     [status, id]
@@ -202,11 +207,11 @@ router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
                 return res.status(400).json({ message: err.message });
             }
         } else {
+            // Atualização simples para outros status (aceito, recusado, etc)
             await db.query("UPDATE pedidos SET status = ? WHERE id = ?", [status, id]);
         }
 
-        // --- NOTIFICAÇÃO REMOVIDA PARA RESTAURAR O FUNCIONAMENTO ---
-        
+        // Resposta de sucesso
         res.json({ message: "Status atualizado com sucesso" });
         
     } catch (err) {
