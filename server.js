@@ -114,6 +114,13 @@ io.on("connection", (socket) => {
     socket.on("disconnect", () => {
         console.log("Cliente saiu:", socket.id);
     });
+    
+    socket.on("join_loja_direto", (nomeDaSala) => {
+    socket.join(nomeDaSala);
+    console.log(`✅ O painel entrou na sala exata: ${nomeDaSala}`);
+});
+
+
 });
 const PORT = process.env.PORT || 3000;
 
