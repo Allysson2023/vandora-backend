@@ -345,7 +345,7 @@ router.get("/funcionario/loja-dashboard/:id", authMiddleware, async (req, res) =
             COALESCE((SELECT SUM(total_final) FROM pedidos WHERE loja_id = s.id AND status = 'finalizado' AND MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE())), 0) AS faturamentoMes,
             COALESCE((SELECT SUM(total_final) FROM pedidos WHERE loja_id = s.id AND status = 'finalizado' AND YEAR(created_at) = YEAR(CURDATE())), 0) AS faturamentoAno,
             COALESCE((SELECT COUNT(*) FROM products WHERE store_id = s.id), 0) AS total_produtos,
-            COALESCE((SELECT COUNT(*) FROM pedidos WHERE loja_id = s.id), 0) AS total_pedidos
+            COALESCE((SELECT COUNT(*) FROM pedidos WHERE loja_id = s.id AND status = 'finalizado'), 0) AS total_pedidos
             FROM stores s WHERE s.id = ? AND s.funcionario_id = ? LIMIT 1
         `;
         const [result] = await db.query(sql, [lojaId, req.user.id]);
