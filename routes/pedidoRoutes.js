@@ -222,8 +222,6 @@ router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
             const io = getIo();
             const nomeSala = `user_${clienteId}`;
             
-            console.log(`📡 [DEBUG] Tentando enviar notificação para a sala: ${nomeSala}`);
-            
             if (io) {
                 io.to(nomeSala).emit("nova_notificacao", {
                     titulo: "Status do Pedido Atualizado",
@@ -231,8 +229,6 @@ router.put("/pedidos/:id/status", authMiddleware, async (req, res) => {
                     pedido_id: id,
                     created_at: new Date()
                 });
-
-                console.log("📡 [DEBUG] Emitido com sucesso!");
 
                 await db.query(
                     "INSERT INTO notifications (user_id, titulo, mensagem, pedido_id) VALUES (?, ?, ?, ?)", 
