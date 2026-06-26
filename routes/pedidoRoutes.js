@@ -4,7 +4,7 @@ const db = require("../config/db"); // Certifique-se que este arquivo exporta a 
 const authMiddleware = require("../middlewares/authMiddleware");
 const { getIo } = require("../utils/socket");
 
-// 1. ROTA: CRIAÇÃO DE PEDIDOS
+
 // 1. ROTA: CRIAÇÃO DE PEDIDOS
 router.post("/pedidos", authMiddleware, async (req, res) => {
     console.log("--- PEDIDO ---");
@@ -102,9 +102,14 @@ router.post("/pedidos", authMiddleware, async (req, res) => {
             connection.release();
 
             const io = getIo();
-            io.to(`loja_${lojaIdInt}`).emit("novo_pedido", { id: pedido_id, total: totalFinal });
+            io.to(`loja_${lojaIdInt}`).emit("novo_pedido", { 
+    id: pedido_id, 
+    status: "AGUARDANDO_CONFIRMACAO",
+    total_final: totalFinal,
+    mensagem: "Novo pedido recebido!"
+});
 
-            return res.json({ message: "Pedido criado", pedidoId: pedido_id });
+return res.json({ message: "Pedido criado", pedidoId: pedido_id });
         } catch (err) {
             await connection.rollback();
             connection.release();
