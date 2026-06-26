@@ -57,7 +57,7 @@ router.get('/banners/video', async (req, res) => {
 
 // Rota de Cadastro
 router.post('/banners', authMiddleware, upload.single('imagem'), async (req, res) => {
-    const { titulo, link_destino, tipo } = req.body;
+    const { titulo, loja_id, tipo } = req.body;
     if (!req.file) return res.status(400).json({ error: "Arquivo é obrigatório" });
 
     const funcionario_id = req.user.id;
@@ -73,8 +73,8 @@ router.post('/banners', authMiddleware, upload.single('imagem'), async (req, res
             nomeArquivoFinal = `resized-${req.file.filename}`;
         }
 
-        const sql = 'INSERT INTO banners (imagem, titulo, link_destino, funcionario_id, nome_funcionario, tipo) VALUES (?, ?, ?, ?, ?, ?)';
-        await db.query(sql, [nomeArquivoFinal, titulo, link_destino, funcionario_id, nome_funcionario, tipo]);
+        const sql = 'INSERT INTO banners (imagem, titulo, loja_id, funcionario_id, nome_funcionario, tipo) VALUES (?, ?, ?, ?, ?, ?)';
+        await db.query(sql, [nomeArquivoFinal, titulo, loja_id, funcionario_id, nome_funcionario, tipo]);
         
         res.json({ message: "Banner/Vídeo cadastrado com sucesso!" });
     } catch (error) {
