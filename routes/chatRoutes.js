@@ -123,9 +123,13 @@ router.post("/mensagem", authMiddleware, checkChatMessageAccess, async (req, res
             const [newChat] = await db.query("INSERT INTO chats (cliente_id, loja_id, atualizado_em, tem_nova_msg) VALUES (?, ?, NOW(), TRUE)", 
                 [remetente_tipo === "cliente" ? remetente_id : cliente_id, loja_id]);
             targetChatId = newChat.insertId;
-        } else {
-            await db.query("UPDATE chats SET tem_nova_msg = TRUE, atualizado_em = NOW() WHERE id = ?", [chat_id]);
-        }
+        } 
+        if (remetente_tipo === "cliente") {
+    await db.query("UPDATE chats SET tem_nova_msg = TRUE, atualizado_em = NOW() WHERE id = ?", [targetChatId]);
+} else {
+    // Se a loja enviou, apenas atualiza a data, mas NÃO marca como nova para a própria loja
+    await db.query("UPDATE chats SET atualizado_em = NOW() WHERE id = ?", [targetChatId]);
+}
 
         const [msgResult] = await db.query("INSERT INTO mensagens (chat_id, remetente_id, remetente_tipo, tipo, mensagem) VALUES (?, ?, ?, ?, ?)", 
             [targetChatId, remetente_id, remetente_tipo, tipo, mensagem]);
