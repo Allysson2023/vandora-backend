@@ -120,6 +120,11 @@ io.on("connection", (socket) => {
     console.log(`✅ O painel entrou na sala exata: ${nomeDaSala}`);
 });
 
+    socket.on("join_chat", (chatId) => {
+    socket.join(`chat_${chatId}`);
+    console.log(`✅ Usuário entrou na sala do chat: chat_${chatId}`);
+});
+
 
 });
 const PORT = process.env.PORT || 3000;

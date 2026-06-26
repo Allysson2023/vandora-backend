@@ -138,7 +138,6 @@ router.post("/mensagem", authMiddleware, checkChatMessageAccess, async (req, res
         const io = getIo();
         if (io) {
             io.to(`chat_${targetChatId}`).emit("nova_mensagem", novaMensagem);
-            io.to(`loja_${lojaIdReal}`).emit("nova_mensagem_loja", novaMensagem);
         }
 
         res.json({ message: "Mensagem enviada", chat_id: targetChatId, id: msgResult.insertId });
