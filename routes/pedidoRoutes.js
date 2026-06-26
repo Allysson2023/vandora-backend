@@ -102,13 +102,18 @@ router.post("/pedidos", authMiddleware, async (req, res) => {
             connection.release();
 
             const io = getIo();
+            const sala = `loja_${lojaIdInt}`;
+
+// ADICIONE ESTE LOG AQUI
+console.log(`📡 [DEBUG] Tentando emitir para a sala: ${sala}`);
+
             io.to(`loja_${lojaIdInt}`).emit("novo_pedido", { 
     id: pedido_id, 
     status: "AGUARDANDO_CONFIRMACAO",
     total_final: totalFinal,
     mensagem: "Novo pedido recebido!"
 });
-
+console.log("✅ EMITIDO COM SUCESSO!");
 return res.json({ message: "Pedido criado", pedidoId: pedido_id });
         } catch (err) {
             await connection.rollback();
