@@ -147,6 +147,7 @@ router.get('/stores/:id/public/products', async (req, res) => {
 // ATUALIZAR LOJA
 // ===============================
 router.put('/stores/:id', authMiddleware, checkOwner, async (req, res) => {
+    console.log(req.body)
     try {
         const { 
             nome, descricao, horario_abertura, horario_fechamento, 
@@ -164,25 +165,15 @@ router.put('/stores/:id', authMiddleware, checkOwner, async (req, res) => {
         // SQL de atualização incluindo os novos campos
         await db.query(`
             UPDATE stores SET 
-                nome = ?, 
-                descricao = ?, 
-                horario_abertura = ?, 
-                horario_fechamento = ?, 
-                facebook = ?, 
-                instagram = ?, 
-                meta_mensal = ?,
-                endereco = ?,
-                numero = ?,
-                bairro = ?,
-                cidade = ?,
-                cep = ?,
-                aceita_entrega = ?,
-                aceita_retirada = ?
+                nome = ?, descricao = ?, horario_abertura = ?, horario_fechamento = ?, 
+                facebook = ?, instagram = ?, meta_mensal = ?,
+                endereco = ?, numero = ?, bairro = ?, cidade = ?, cep = ?, 
+                aceita_entrega = ?, aceita_retirada = ?
             WHERE id = ? AND user_id = ?`,
             [
                 nome, descricao, horario_abertura, horario_fechamento, 
                 facebook, instagram, meta_mensal,
-                endereco, numero, bairro, cidade, cep, 
+                endereco || null, numero || null, bairro || null, cidade || null, cep || null, 
                 aceita_entrega, aceita_retirada,
                 req.storeId, req.user.id
             ]
