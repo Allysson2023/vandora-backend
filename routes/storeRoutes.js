@@ -308,20 +308,27 @@ router.get('/stores/:id/clientes', authMiddleware, checkOwner, async (req, res) 
 // ===============================
 router.get("/funcionario/minhas-lojas", authMiddleware, async (req, res) => {
     try {
-        // Nota: Apenas funcionários devem ter acesso a essa rota
         if (req.user.tipo !== 'funcionario') return res.status(403).json({ message: "Acesso negado" });
 
         const sql = `
             SELECT s.id, s.nome, s.categoria, s.imagem,
             (SELECT COUNT(*) FROM products p WHERE p.store_id = s.id) AS total_produtos,
-            (SELECT COUNT(*) FROM pedidos pe WHERE pe.loja_id = s.id) AS total_pedidos,
-            COALESCE((SELECT SUM(pe.total) FROM pedidos pe WHERE pe.loja_id = s.id AND pe.status = 'finalizado' AND DATE(pe.created_at) = CURDATE()), 0) AS faturamento,
+            (SELECT COUNT(*) FROM pedidos pe WHERE pe.loja_id = s.id AND pe.status = 'finalizado') AS total_pedidos,
+            COALESCE((
+                SELECT SUM(pe.total_final) 
+                FROM pedidos pe 
+                WHERE pe.loja_id = s.id 
+                AND pe.status = 'finalizado' 
+                AND DATE(pe.created_at) = CURDATE()
+            ), 0) AS faturamento,
             CASE 
                 WHEN s.horario_abertura IS NULL OR s.horario_fechamento IS NULL THEN 0
                 WHEN s.horario_abertura < s.horario_fechamento THEN (CASE WHEN CURTIME() BETWEEN s.horario_abertura AND s.horario_fechamento THEN 1 ELSE 0 END)
                 ELSE (CASE WHEN CURTIME() >= s.horario_abertura OR CURTIME() < s.horario_fechamento THEN 1 ELSE 0 END)
             END AS aberta
-            FROM stores s WHERE s.funcionario_id = ? ORDER BY s.id DESC
+            FROM stores s 
+            WHERE s.funcionario_id = ? 
+            ORDER BY s.id DESC
         `;
         const [result] = await db.query(sql, [req.user.id]);
         res.json(result);
