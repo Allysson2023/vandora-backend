@@ -148,18 +148,49 @@ router.get('/stores/:id/public/products', async (req, res) => {
 // ===============================
 router.put('/stores/:id', authMiddleware, checkOwner, async (req, res) => {
     try {
-        const { nome, descricao, horario_abertura, horario_fechamento, facebook, instagram, meta_mensal } = req.body;
+        const { 
+            nome, descricao, horario_abertura, horario_fechamento, 
+            facebook, instagram, meta_mensal, 
+            endereco, numero, bairro, cidade, cep, 
+            aceita_entrega, aceita_retirada 
+        } = req.body;
 
+        // Validações básicas
         if (!nome || nome.trim().length < 3) return res.status(400).json({ message: "Nome inválido" });
         if (nome.length > 100) return res.status(400).json({ message: "Nome muito grande" });
         if (descricao && descricao.length > 3000) return res.status(400).json({ message: "Descrição muito grande" });
         if (meta_mensal !== null && meta_mensal !== undefined && isNaN(meta_mensal)) return res.status(400).json({ message: "Meta inválida" });
 
-        await db.query(`UPDATE stores SET nome=?, descricao=?, horario_abertura=?, horario_fechamento=?, facebook=?, instagram=?, meta_mensal=? WHERE id=? AND user_id=?`,
-            [nome, descricao, horario_abertura, horario_fechamento, facebook, instagram, meta_mensal, req.storeId, req.user.id]);
+        // SQL de atualização incluindo os novos campos
+        await db.query(`
+            UPDATE stores SET 
+                nome = ?, 
+                descricao = ?, 
+                horario_abertura = ?, 
+                horario_fechamento = ?, 
+                facebook = ?, 
+                instagram = ?, 
+                meta_mensal = ?,
+                endereco = ?,
+                numero = ?,
+                bairro = ?,
+                cidade = ?,
+                cep = ?,
+                aceita_entrega = ?,
+                aceita_retirada = ?
+            WHERE id = ? AND user_id = ?`,
+            [
+                nome, descricao, horario_abertura, horario_fechamento, 
+                facebook, instagram, meta_mensal,
+                endereco, numero, bairro, cidade, cep, 
+                aceita_entrega, aceita_retirada,
+                req.storeId, req.user.id
+            ]
+        );
 
         res.json({ message: "Loja atualizada com sucesso" });
     } catch (err) {
+        console.error(err); // Ajuda a identificar erros de SQL no seu terminal
         res.status(500).json({ message: "Erro ao atualizar loja" });
     }
 });
