@@ -37,26 +37,25 @@ router.put('/stores/imagem', authMiddleware, uploadLojas.single('imagem'), async
 router.post('/stores', authMiddleware, uploadLojas.single('imagem'), async (req, res) => {
     try {
         if (req.user.tipo !== "funcionario") return res.status(403).json({ message: "Apenas funcionários podem criar lojas" });
-        if (!req.file) return res.status(400).json({ message: "Envie uma imagem da loja" });
 
         const { nome, categoria, whatsapp, username, password } = req.body;
         
-        if (!nome || !categoria || !whatsapp || !username || !password) return res.status(400).json({ message: "Preencha todos os campos" });
+        // Mantemos a validação apenas dos campos de texto
+        if (!nome || !categoria || !whatsapp || !username || !password) 
+            return res.status(400).json({ message: "Preencha todos os campos" });
         
-        // --- FUNÇÃO PARA GERAR O SLUG ---
+        // Defina uma imagem padrão se nenhuma for enviada
+        const nomeImagem = req.file ? req.file.filename : 'default-store.png';
+
         const gerarSlug = (texto) => {
-            return texto
-                .toString()
-                .toLowerCase()
-                .trim()
-                .replace(/\s+/g, '-')       // Espaços por -
-                .replace(/[^\w\-]+/g, '')   // Remove caracteres especiais
-                .replace(/\-\-+/g, '-');    // Remove hífens duplicados
+            return texto.toString().toLowerCase().trim()
+                .replace(/\s+/g, '-')
+                .replace(/[^\w\-]+/g, '')
+                .replace(/\-\-+/g, '-');
         };
 
         const slug = gerarSlug(nome);
 
-        // Iniciar Transação
         const connection = await db.getConnection();
         await connection.beginTransaction();
 
@@ -70,10 +69,10 @@ router.post('/stores', authMiddleware, uploadLojas.single('imagem'), async (req,
             const senhaHash = await bcrypt.hash(password, 10);
             const [userResult] = await connection.query("INSERT INTO users (username, password, tipo) VALUES (?, ?, 'lojista')", [username.trim().toLowerCase(), senhaHash]);
 
-            // --- INSERÇÃO COM O SLUG ---
+            // Agora usamos 'nomeImagem' que pode ser o arquivo ou o padrão
             await connection.query(
                 "INSERT INTO stores (nome, slug, categoria, imagem, whatsapp, funcionario_id, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [nome.trim(), slug, categoria.trim(), req.file.filename, whatsapp.trim(), req.user.id, userResult.insertId]
+                [nome.trim(), slug, categoria.trim(), nomeImagem, whatsapp.trim(), req.user.id, userResult.insertId]
             );
 
             await connection.commit();
