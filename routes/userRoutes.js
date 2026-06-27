@@ -123,14 +123,17 @@ router.get('/client-profile', authMiddleware, async (req, res) => {
     try {
         const [result] = await db.query(`
             SELECT u.id, u.username, u.imagem_perfil, u.created_at, 
-            COUNT(p.id) AS total_compras
+                   u.nome_completo, u.email, u.telefone, u.data_nascimento, u.cpf_cnpj,
+                   COUNT(p.id) AS total_compras
             FROM users u
             LEFT JOIN pedidos p ON p.usuario_id = u.id
             WHERE u.id = ? GROUP BY u.id`, [req.user.id]);
 
         if (result.length === 0) return res.status(404).json({ error: "Usuário não encontrado" });
+        
         res.json(result[0]);
     } catch (err) {
+        console.error(err); // Dica: sempre logue o erro no console do servidor
         res.status(500).json({ error: "Erro interno do servidor" });
     }
 });
