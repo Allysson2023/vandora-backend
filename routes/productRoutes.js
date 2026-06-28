@@ -26,16 +26,16 @@ router.post("/products", authMiddleware, uploadProdutos.fields([{ name: "imagem"
         const [storeResult] = await connection.query("SELECT id FROM stores WHERE user_id = ?", [req.user.id]);
         if (storeResult.length === 0) throw new Error("Loja não encontrada");
 
-        const { nome, descricao, preco, preco_antigo, estoque, category_id, variantes, specs } = req.body;
+        const {nome, descricao, preco, preco_antigo, estoque, category_id, variantes, destaque } = req.body;
         const img1 = req.files?.imagem?.[0]?.filename || null;
         const img2 = req.files?.imagem2?.[0]?.filename || null;
         const img3 = req.files?.imagem3?.[0]?.filename || null;
 
         // Inserir Produto
         const [prodResult] = await connection.query(
-            `INSERT INTO products (nome, descricao, preco, preco_antigo, estoque, imagem, imagem2, imagem3, category_id, store_id) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-            [nome, descricao, preco, preco_antigo || null, estoque, img1, img2, img3, category_id, storeResult[0].id]
-        );
+    `INSERT INTO products (nome, descricao, preco, preco_antigo, estoque, imagem, imagem2, imagem3, category_id, store_id, destaque) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+    [nome, descricao, preco, preco_antigo || null, estoque, img1, img2, img3, category_id, storeResult[0].id, destaque ? 1 : 0]
+);
 
         const productId = prodResult.insertId;
 
@@ -156,14 +156,15 @@ router.put("/products/:id", authMiddleware, uploadProdutos.fields([{ name: "imag
         const erro = validarProduto(req.body);
         if (erro) return res.status(400).json({ message: erro });
 
-        const { nome, descricao, preco, preco_antigo, estoque, category_id } = req.body;
+        const { nome, descricao, preco, preco_antigo, estoque, category_id, destaque } = req.body;
         const img1 = req.files?.imagem?.[0]?.filename;
         const img2 = req.files?.imagem2?.[0]?.filename;
         const img3 = req.files?.imagem3?.[0]?.filename;
 
         await db.query(`UPDATE products SET nome=?, descricao=?, preco=?, preco_antigo=?, estoque=?, category_id=?, 
-                        imagem=COALESCE(?, imagem), imagem2=COALESCE(?, imagem2), imagem3=COALESCE(?, imagem3) WHERE id=?`,
-            [nome, descricao, preco, preco_antigo || null, estoque, category_id || null, img1 || null, img2 || null, img3 || null, req.params.id]);
+                destaque=?, imagem=COALESCE(?, imagem), imagem2=COALESCE(?, imagem2), imagem3=COALESCE(?, imagem3) WHERE id=?`,
+    [nome, descricao, preco, preco_antigo || null, estoque, category_id || null, destaque ? 1 : 0, img1 || null, img2 || null, img3 || null, req.params.id]
+);
 
         res.json({ message: "Produto atualizado com sucesso!" });
     } catch (err) {
