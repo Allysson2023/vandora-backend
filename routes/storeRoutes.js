@@ -127,6 +127,20 @@ router.get('/stores/:id/public', async (req, res) => {
     } catch (err) { res.status(500).json({ message: "Erro no servidor" }); }
 });
 
+// Rota pública para buscar loja por SLUG
+router.get('/stores/slug/:slug', async (req, res) => {
+    try {
+        const [rows] = await db.query(
+            "SELECT id, nome, descricao, imagem, categoria, whatsapp, facebook, instagram, horario_abertura, horario_fechamento FROM stores WHERE slug = ?", 
+            [req.params.slug]
+        );
+        if (rows.length === 0) return res.status(404).json({ message: "Loja não encontrada" });
+        res.json(rows[0]);
+    } catch (err) { 
+        res.status(500).json({ message: "Erro no servidor" }); 
+    }
+});
+
 router.get('/stores/:id', authMiddleware, checkOwner, async (req, res) => {
     const [rows] = await db.query("SELECT * FROM stores WHERE id = ? AND user_id = ?", [req.storeId, req.user.id]);
     res.json(rows[0]);
