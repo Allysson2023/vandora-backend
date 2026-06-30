@@ -31,10 +31,18 @@ router.post("/products", authMiddleware, uploadProdutos.fields([{ name: "imagem"
         const img2 = req.files?.imagem2?.[0]?.filename || null;
         const img3 = req.files?.imagem3?.[0]?.filename || null;
 
+        const slug = nome
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 -]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
+
         // Inserir Produto
-        const [prodResult] = await connection.query(
-    `INSERT INTO products (nome, descricao, preco, preco_antigo, estoque, imagem, imagem2, imagem3, category_id, store_id, destaque) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-    [nome, descricao, preco, preco_antigo || null, estoque, img1, img2, img3, category_id, storeResult[0].id, destaque ? 1 : 0]
+    const [prodResult] = await connection.query(
+    `INSERT INTO products (nome, descricao, preco, preco_antigo, estoque, imagem, imagem2, imagem3, category_id, store_id, destaque, slug) 
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [nome, descricao, preco, preco_antigo || null, estoque, img1, img2, img3, category_id, storeResult[0].id, destaque ? 1 : 0, slug]
 );
 
         const productId = prodResult.insertId;
@@ -161,13 +169,34 @@ router.put("/products/:id", authMiddleware, uploadProdutos.fields([{ name: "imag
         const img2 = req.files?.imagem2?.[0]?.filename;
         const img3 = req.files?.imagem3?.[0]?.filename;
 
-        await db.query(`UPDATE products SET nome=?, descricao=?, preco=?, preco_antigo=?, estoque=?, category_id=?, 
-                destaque=?, imagem=COALESCE(?, imagem), imagem2=COALESCE(?, imagem2), imagem3=COALESCE(?, imagem3) WHERE id=?`,
-    [nome, descricao, preco, preco_antigo || null, estoque, category_id || null, destaque ? 1 : 0, img1 || null, img2 || null, img3 || null, req.params.id]
-);
+        const novaSlug = nome
+            .toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-z0-9 -]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-');
+
+        // Corrigido: lista completa de campos e placeholder para imagens (usando COALESCE para manter a anterior se não enviar nova)
+        await db.query(`
+            UPDATE products SET 
+                nome = ?, 
+                descricao = ?, 
+                preco = ?, 
+                preco_antigo = ?, 
+                estoque = ?, 
+                category_id = ?, 
+                destaque = ?, 
+                slug = ?, 
+                imagem = COALESCE(?, imagem), 
+                imagem2 = COALESCE(?, imagem2), 
+                imagem3 = COALESCE(?, imagem3) 
+            WHERE id = ?`,
+            [nome, descricao, preco, preco_antigo || null, estoque, category_id || null, destaque ? 1 : 0, novaSlug, img1 || null, img2 || null, img3 || null, req.params.id]
+        );
 
         res.json({ message: "Produto atualizado com sucesso!" });
     } catch (err) {
+        console.error(err);
         res.status(500).json({ message: "Erro ao atualizar produto" });
     }
 });
@@ -236,6 +265,27 @@ router.get('/products/:id/liked', authMiddleware, async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: "Erro interno do servidor" });
+    }
+});
+
+// Rota para buscar produto pelo slug
+router.get('/products/slug/:slug', async (req, res) => {
+    try {
+        const { slug } = req.params;
+        
+        // Buscando no banco pelo campo slug
+        const [product] = await db.execute(
+            'SELECT * FROM products WHERE slug = ?', 
+            [slug]
+        );
+
+        if (product.length === 0) {
+            return res.status(404).json({ message: "Produto não encontrado" });
+        }
+
+        res.json(product[0]);
+    } catch (error) {
+        res.status(500).json({ message: "Erro no servidor" });
     }
 });
 
