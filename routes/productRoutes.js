@@ -69,7 +69,7 @@ router.post("/products", authMiddleware, async (req, res) => {
     }
 });
 
-router.post("/api/upload-image", authMiddleware, upload.single('image'), async (req, res) => {
+router.post("/upload-image", authMiddleware, upload.single('image'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ message: "Nenhum arquivo" });
 
