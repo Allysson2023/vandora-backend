@@ -3,6 +3,9 @@ const router = express.Router();
 const db = require("../config/db");
 const authMiddleware = require("../middlewares/authMiddleware");
 const uploadProdutos = require('../middlewares/uploadProdutos');
+const axios = require('axios');
+const multer = require('multer');
+const upload = multer();
 
 // Helper para validar campos (reutilizável)
 const validarProduto = (data) => {
@@ -15,10 +18,10 @@ const validarProduto = (data) => {
 };
 
 // 1. CADASTRAR PRODUTO (Versão Profissional com Transação)
-router.post("/products", authMiddleware, uploadProdutos.fields([{ name: "imagem", maxCount: 1 }, { name: "imagem2", maxCount: 1 }, { name: "imagem3", maxCount: 1 }]), async (req, res) => {
-    const connection = await db.getConnection(); // Pegamos uma conexão exclusiva
+router.post("/products", authMiddleware, async (req, res) => {
+    const connection = await db.getConnection(); 
     try {
-        await connection.beginTransaction(); // Inicia a segurança
+        await connection.beginTransaction(); 
 
         const erro = validarProduto(req.body);
         if (erro) throw new Error(erro);
@@ -26,28 +29,26 @@ router.post("/products", authMiddleware, uploadProdutos.fields([{ name: "imagem"
         const [storeResult] = await connection.query("SELECT id FROM stores WHERE user_id = ?", [req.user.id]);
         if (storeResult.length === 0) throw new Error("Loja não encontrada");
 
-        const {nome, descricao, preco, preco_antigo, estoque, category_id, variantes, destaque } = req.body;
-        const img1 = req.files?.imagem?.[0]?.filename || null;
-        const img2 = req.files?.imagem2?.[0]?.filename || null;
-        const img3 = req.files?.imagem3?.[0]?.filename || null;
+        // Agora pegamos as URLs diretamente do req.body (que o frontend envia)
+        const { nome, descricao, preco, preco_antigo, estoque, category_id, variantes, destaque, imagem, imagem2, imagem3 } = req.body;
 
         const slug = nome
-    .toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9 -]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-');
+            .toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-z0-9 -]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-');
 
-        // Inserir Produto
-    const [prodResult] = await connection.query(
-    `INSERT INTO products (nome, descricao, preco, preco_antigo, estoque, imagem, imagem2, imagem3, category_id, store_id, destaque, slug) 
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-    [nome, descricao, preco, preco_antigo || null, estoque, img1, img2, img3, category_id, storeResult[0].id, destaque ? 1 : 0, slug]
-);
+        // Inserir Produto usando as variáveis de imagem que já chegam como URLs
+        const [prodResult] = await connection.query(
+            `INSERT INTO products (nome, descricao, preco, preco_antigo, estoque, imagem, imagem2, imagem3, category_id, store_id, destaque, slug) 
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+            [nome, descricao, preco, preco_antigo || null, estoque, imagem || null, imagem2 || null, imagem3 || null, category_id, storeResult[0].id, destaque ? 1 : 0, slug]
+        );
 
         const productId = prodResult.insertId;
 
-        // Se houver variantes (Array enviado pelo Front), salva elas
+        // Se houver variantes, salva elas
         if (variantes && Array.isArray(variantes)) {
             for (let v of variantes) {
                 await connection.query(
@@ -57,14 +58,33 @@ router.post("/products", authMiddleware, uploadProdutos.fields([{ name: "imagem"
             }
         }
 
-        await connection.commit(); // Tudo certo! Confirma a gravação
+        await connection.commit(); 
         res.json({ message: "Produto cadastrado com sucesso!", productId });
     } catch (err) {
-        await connection.rollback(); // Deu erro? Desfaz TUDO o que foi feito nesta tentativa
+        await connection.rollback(); 
         console.error(err);
         res.status(500).json({ message: err.message || "Erro interno no servidor" });
     } finally {
-        connection.release(); // Libera a conexão de volta para o pool
+        connection.release(); 
+    }
+});
+
+router.post("/api/upload-image", authMiddleware, upload.single('image'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ message: "Nenhum arquivo" });
+
+        const formData = new FormData();
+        formData.append("image", req.file.buffer.toString('base64'));
+
+        const response = await axios.post(
+            `https://api.imgbb.com/1/upload?key=${process.env.IMGBB_KEY}`, 
+            formData
+        );
+        
+        res.json({ url: response.data.data.url });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Erro ao subir imagem para o ImgBB" });
     }
 });
 
@@ -155,8 +175,9 @@ router.get("/products/:id", async (req, res) => {
 });
 
 // 3. ATUALIZAR PRODUTO
-router.put("/products/:id", authMiddleware, uploadProdutos.fields([{ name: "imagem", maxCount: 1 }, { name: "imagem2", maxCount: 1 }, { name: "imagem3", maxCount: 1 }]), async (req, res) => {
+router.put("/products/:id", authMiddleware, async (req, res) => {
     try {
+        // Verifica se o produto existe e pertence ao usuário logado
         const [prod] = await db.query("SELECT s.user_id FROM products p JOIN stores s ON p.store_id = s.id WHERE p.id = ?", [req.params.id]);
         if (!prod.length) return res.status(404).json({ message: "Produto não encontrado" });
         if (prod[0].user_id !== req.user.id) return res.status(403).json({ message: "Sem permissão" });
@@ -164,10 +185,8 @@ router.put("/products/:id", authMiddleware, uploadProdutos.fields([{ name: "imag
         const erro = validarProduto(req.body);
         if (erro) return res.status(400).json({ message: erro });
 
-        const { nome, descricao, preco, preco_antigo, estoque, category_id, destaque } = req.body;
-        const img1 = req.files?.imagem?.[0]?.filename;
-        const img2 = req.files?.imagem2?.[0]?.filename;
-        const img3 = req.files?.imagem3?.[0]?.filename;
+        // Agora recebemos as URLs das imagens diretamente do req.body
+        const { nome, descricao, preco, preco_antigo, estoque, category_id, destaque, imagem, imagem2, imagem3 } = req.body;
 
         const novaSlug = nome
             .toLowerCase()
@@ -176,7 +195,7 @@ router.put("/products/:id", authMiddleware, uploadProdutos.fields([{ name: "imag
             .replace(/\s+/g, '-')
             .replace(/-+/g, '-');
 
-        // Corrigido: lista completa de campos e placeholder para imagens (usando COALESCE para manter a anterior se não enviar nova)
+        // Atualização simples: salvamos exatamente o que veio do frontend
         await db.query(`
             UPDATE products SET 
                 nome = ?, 
@@ -187,11 +206,24 @@ router.put("/products/:id", authMiddleware, uploadProdutos.fields([{ name: "imag
                 category_id = ?, 
                 destaque = ?, 
                 slug = ?, 
-                imagem = COALESCE(?, imagem), 
-                imagem2 = COALESCE(?, imagem2), 
-                imagem3 = COALESCE(?, imagem3) 
+                imagem = ?, 
+                imagem2 = ?, 
+                imagem3 = ? 
             WHERE id = ?`,
-            [nome, descricao, preco, preco_antigo || null, estoque, category_id || null, destaque ? 1 : 0, novaSlug, img1 || null, img2 || null, img3 || null, req.params.id]
+            [
+                nome, 
+                descricao, 
+                preco, 
+                preco_antigo || null, 
+                estoque, 
+                category_id || null, 
+                destaque ? 1 : 0, 
+                novaSlug, 
+                imagem, // URL da imagem 1
+                imagem2, // URL da imagem 2
+                imagem3, // URL da imagem 3
+                req.params.id
+            ]
         );
 
         res.json({ message: "Produto atualizado com sucesso!" });
