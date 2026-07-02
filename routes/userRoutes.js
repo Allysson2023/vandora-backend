@@ -4,6 +4,9 @@ const db = require('../config/db');
 const jwt = require('jsonwebtoken');
 const authMiddleware = require('../middlewares/authMiddleware');
 const bcrypt = require("bcrypt");
+const axios = require('axios');
+const fs = require('fs');
+const FormData = require('form-data');
 
 // IMPORTAÇÃO CORRETA (Sem chaves, pois seu arquivo exporta a instância diretamente)
 const uploadPerfil = require('../middlewares/uploadPerfil'); 
@@ -207,6 +210,33 @@ router.put('/update-profile', authMiddleware,uploadPerfil.single('imagem'), asyn
         connection.release();
     }
 });
+
+// ROTA PARA FAZER UPLOAD DA FOTO DO USUÁRIO PARA O IMGBB
+router.post("/upload-user-photo", authMiddleware, uploadPerfil.single('image'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ message: "Nenhum arquivo enviado" });
+
+        const formData = new FormData();
+        // Lemos o arquivo que o multer salvou e mandamos para o ImgBB
+        formData.append("image", fs.createReadStream(req.file.path));
+
+        const response = await axios.post(
+            `https://api.imgbb.com/1/upload?key=${process.env.IMGBB_KEY}`, 
+            formData,
+            { headers: formData.getHeaders() }
+        );
+        
+        // Remove o arquivo temporário do servidor
+        fs.unlinkSync(req.file.path);
+        
+        // Retorna a URL para o seu Frontend
+        res.json({ url: response.data.data.url });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Erro ao subir imagem para o ImgBB" });
+    }
+});
+
 
 // ROTA PARA BUSCAR DADOS DO USUÁRIO PELO ID
 router.get('/users/:id', authMiddleware, async (req, res) => {
