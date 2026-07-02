@@ -175,7 +175,7 @@ router.get('/profile', authMiddleware, async (req, res) => {
 // ===============================
 // ATUALIZAR PERFIL + LOJA (Com Transação)
 // ===============================
-router.put('/update-profile', authMiddleware,uploadPerfil.single('imagem'), async (req, res) => {
+router.put('/update-profile', authMiddleware, async (req, res) => {
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
@@ -217,7 +217,6 @@ router.post("/upload-user-photo", authMiddleware, uploadPerfil.single('image'), 
         if (!req.file) return res.status(400).json({ message: "Nenhum arquivo enviado" });
 
         const formData = new FormData();
-        // Lemos o arquivo que o multer salvou e mandamos para o ImgBB
         formData.append("image", fs.createReadStream(req.file.path));
 
         const response = await axios.post(
@@ -226,10 +225,8 @@ router.post("/upload-user-photo", authMiddleware, uploadPerfil.single('image'), 
             { headers: formData.getHeaders() }
         );
         
-        // Remove o arquivo temporário do servidor
         fs.unlinkSync(req.file.path);
         
-        // Retorna a URL para o seu Frontend
         res.json({ url: response.data.data.url });
     } catch (error) {
         console.error(error);
@@ -241,7 +238,11 @@ router.post("/upload-user-photo", authMiddleware, uploadPerfil.single('image'), 
 // ROTA PARA BUSCAR DADOS DO USUÁRIO PELO ID
 router.get('/users/:id', authMiddleware, async (req, res) => {
     try {
-        const [users] = await db.query("SELECT id, username FROM users WHERE id = ?", [req.params.id]);
+        // Adicionei imagem_perfil, nome_completo, etc.
+        const [users] = await db.query(
+            "SELECT id, username, nome_completo, email, telefone, data_nascimento, cpf_cnpj, imagem_perfil FROM users WHERE id = ?", 
+            [req.params.id]
+        );
         
         if (users.length === 0) {
             return res.status(404).json({ error: "Usuário não encontrado" });
