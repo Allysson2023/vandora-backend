@@ -69,46 +69,41 @@ router.post('/login', loginLimiter, async (req, res) => {
 // ===============================
 // ATUALIZAR USUÁRIO (Dinâmico)
 // ===============================
-router.put('/users/:id', authMiddleware, uploadPerfil.single('imagem_perfil'), async (req, res) => {
+router.put('/users/:id', authMiddleware, async (req, res) => {
     try {
         if (Number(req.params.id) !== Number(req.user.id)) return res.status(403).json({ error: "Sem permissão" });
 
-        // 1. Pegue todos os campos do body
-        const { username, nome_completo, email, telefone, data_nascimento, cpf_cnpj, password } = req.body;
+        const { username, nome_completo, email, telefone, data_nascimento, cpf_cnpj, password, imagem_perfil } = req.body;
         
         const updates = [];
         const values = [];
 
-        // 2. Adicione os campos se eles existirem na requisição
         if (username) { updates.push("username = ?"); values.push(username.trim()); }
         if (nome_completo !== undefined) { updates.push("nome_completo = ?"); values.push(nome_completo); }
         if (email !== undefined) { updates.push("email = ?"); values.push(email); }
         if (telefone !== undefined) { updates.push("telefone = ?"); values.push(telefone); }
         if (data_nascimento !== undefined) { updates.push("data_nascimento = ?"); values.push(data_nascimento || null); }
         if (cpf_cnpj !== undefined) { updates.push("cpf_cnpj = ?"); values.push(cpf_cnpj); }
+        
+        // AQUI A MUDANÇA: Recebemos a URL do ImgBB como string normal
+        if (imagem_perfil) {
+            updates.push("imagem_perfil = ?");
+            values.push(imagem_perfil); // Salva a URL diretamente no banco
+        }
 
         if (password) {
-            if (password.length < 6 || !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/.test(password)) {
-                return res.status(400).json({ error: "Senha fora dos padrões" });
-            }
             updates.push("password = ?");
             values.push(await bcrypt.hash(password, 10));
         }
 
-        if (req.file) {
-            updates.push("imagem_perfil = ?");
-            values.push(req.file.filename);
-        }
-
         if (updates.length === 0) return res.status(400).json({ error: "Nada para atualizar" });
 
-        // 3. Executa a query
         values.push(req.params.id);
         await db.query(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`, values);
 
         res.json({ message: "Usuário atualizado com sucesso" });
     } catch (err) {
-        console.error(err); // Importante para debugar no servidor
+        console.error(err);
         res.status(500).json({ error: "Erro ao atualizar" });
     }
 });
