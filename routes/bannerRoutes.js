@@ -45,7 +45,7 @@ router.get('/banners/imagens', async (req, res) => {
         res.status(500).json({ error: "Erro ao buscar imagens", details: err });
     }
 });
-
+ 
 router.get('/banners/video', async (req, res) => {
     try {
         const [results] = await db.query("SELECT * FROM banners WHERE tipo = 'video'");
@@ -55,31 +55,26 @@ router.get('/banners/video', async (req, res) => {
     }
 });
 
-// Rota de Cadastro
-router.post('/banners', authMiddleware, upload.single('imagem'), async (req, res) => {
-    const { titulo, loja_id, tipo } = req.body;
-    if (!req.file) return res.status(400).json({ error: "Arquivo é obrigatório" });
+// Remova o 'upload.single' daqui se você não estiver mais enviando arquivo direto para o backend
+router.post('/banners', authMiddleware, async (req, res) => {
+    const { titulo, loja_id, tipo, imagemUrl } = req.body; 
+    
+    // Log para depurar no terminal do servidor e ver o que está chegando
+    console.log("Dados recebidos:", { titulo, loja_id, tipo, imagemUrl });
 
-    const funcionario_id = req.user.id;
-    const nome_funcionario = req.user.username;
+    if (!titulo || !loja_id || !imagemUrl) {
+        return res.status(400).json({ error: "Campos obrigatórios faltando" });
+    }
 
     try {
-        let nomeArquivoFinal = req.file.filename;
-
-        if (req.file.mimetype.startsWith('image/')) {
-            const sharp = require('sharp');
-            const caminhoDestino = path.join(__dirname, '../uploads/banners/', `resized-${req.file.filename}`);
-            await sharp(req.file.path).resize(1200, 300).toFile(caminhoDestino);
-            nomeArquivoFinal = `resized-${req.file.filename}`;
-        }
-
         const sql = 'INSERT INTO banners (imagem, titulo, loja_id, funcionario_id, nome_funcionario, tipo) VALUES (?, ?, ?, ?, ?, ?)';
-        await db.query(sql, [nomeArquivoFinal, titulo, loja_id, funcionario_id, nome_funcionario, tipo]);
+        // Lembre-se de definir o 'tipo' se não estiver vindo do front
+        await db.query(sql, [imagemUrl, titulo, loja_id, req.user.id, req.user.username, 'imagem']);
         
-        res.json({ message: "Banner/Vídeo cadastrado com sucesso!" });
+        res.json({ message: "Banner cadastrado com sucesso!" });
     } catch (error) {
-        console.error("Erro no processamento:", error);
-        res.status(500).json({ error: "Erro ao salvar banner", details: error.message });
+        console.error("Erro no SQL:", error);
+        res.status(500).json({ error: "Erro ao salvar banner no banco" });
     }
 });
 
