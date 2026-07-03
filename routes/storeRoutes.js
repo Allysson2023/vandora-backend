@@ -74,28 +74,35 @@ router.put('/stores/:id', authMiddleware, checkOwner, async (req, res) => {
 // ROTA PARA ATUALIZAR APENAS A LOGO DA LOJA (via ImgBB)
 router.post('/upload-store-logo', authMiddleware, uploadLojas.single('image'), async (req, res) => {
     try {
-        if (!req.file) return res.status(400).json({ message: 'Nenhuma imagem enviada' });
+        // 1. Validação crítica
+        if (!req.file) {
+            return res.status(400).json({ message: 'Nenhum arquivo enviado pelo multer' });
+        }
 
-        // Prepara o FormData para o ImgBB
+        // 2. Preparação do FormData
         const form = new FormData();
-        // Aqui você pega o arquivo que o multer pegou (seja buffer ou o caminho temporário)
+        // Se req.file.path existe, usamos ele. Se for buffer, ajustaríamos aqui.
         form.append('image', fs.createReadStream(req.file.path));
 
-        // Envia para o ImgBB
-        const response = await axios.post(`https://api.imgbb.com/1/upload?key=${process.env.IMGBB_API_KEY}`, form, {
+        // 3. Envio para o ImgBB
+        // Verifique se process.env.IMGBB_API_KEY está realmente preenchido no servidor!
+        const apiKey = process.env.IMGBB_API_KEY; 
+        const response = await axios.post(`https://api.imgbb.com/1/upload?key=${apiKey}`, form, {
             headers: { ...form.getHeaders() }
         });
 
         const imageUrl = response.data.data.url;
 
-        // Apaga o arquivo temporário do servidor (ele já está na nuvem)
-        fs.unlinkSync(req.file.path);
+        // 4. Limpeza
+        if (fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
+        }
 
-        // Retorna a URL para o frontend
         res.json({ url: imageUrl });
     } catch (err) {
-        console.error("Erro no upload ImgBB:", err);
-        res.status(500).json({ message: 'Erro ao subir imagem para a nuvem' });
+        // Log detalhado para o terminal
+        console.error("ERRO DETALHADO:", err.response?.data || err.message);
+        res.status(500).json({ message: 'Erro ao conectar com a nuvem' });
     }
 });
 
