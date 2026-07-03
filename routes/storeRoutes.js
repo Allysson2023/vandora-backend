@@ -8,6 +8,8 @@ const uploadProdutos = require('../middlewares/uploadProdutos');
 const axios = require('axios'); // Adicione no topo do arquivo
 const fs = require('fs');
 const FormData = require('form-data');
+const multer = require('multer');
+const upload = multer();
 
 // Middleware de autorização otimizado
 const checkOwner = async (req, res, next) => {
@@ -71,38 +73,25 @@ router.put('/stores/:id', authMiddleware, checkOwner, async (req, res) => {
     }
 });
 
-// ROTA PARA ATUALIZAR APENAS A LOGO DA LOJA (via ImgBB)
-router.post('/upload-store-logo', authMiddleware, uploadLojas.single('image'), async (req, res) => {
+router.post("/upload-store-logo", authMiddleware, upload.single('image'), async (req, res) => {
     try {
-        // 1. Validação crítica
-        if (!req.file) {
-            return res.status(400).json({ message: 'Nenhum arquivo enviado pelo multer' });
-        }
+        if (!req.file) return res.status(400).json({ message: "Nenhum arquivo enviado" });
 
-        // 2. Preparação do FormData
-        const form = new FormData();
-        // Se req.file.path existe, usamos ele. Se for buffer, ajustaríamos aqui.
-        form.append('image', fs.createReadStream(req.file.path));
+        const formData = new FormData();
+        // Converte o buffer para base64 (Padrão que você usa nos produtos)
+        formData.append("image", req.file.buffer.toString('base64'));
 
-        // 3. Envio para o ImgBB
-        // Verifique se process.env.IMGBB_API_KEY está realmente preenchido no servidor!
-        const apiKey = process.env.IMGBB_API_KEY; 
-        const response = await axios.post(`https://api.imgbb.com/1/upload?key=${apiKey}`, form, {
-            headers: { ...form.getHeaders() }
-        });
-
-        const imageUrl = response.data.data.url;
-
-        // 4. Limpeza
-        if (fs.existsSync(req.file.path)) {
-            fs.unlinkSync(req.file.path);
-        }
-
-        res.json({ url: imageUrl });
-    } catch (err) {
-        // Log detalhado para o terminal
-        console.error("ERRO DETALHADO:", err.response?.data || err.message);
-        res.status(500).json({ message: 'Erro ao conectar com a nuvem' });
+        const response = await axios.post(
+            `https://api.imgbb.com/1/upload?key=${process.env.IMGBB_KEY}`, 
+            formData
+        );
+        
+        // Retorna a URL que o ImgBB entregou
+        res.json({ url: response.data.data.url });
+    } catch (error) {
+        // Isso vai te mostrar se a chave está errada ou o formato é inválido
+        console.error("ERRO IMGBB DETALHADO:", error.response?.data?.error || error.message);
+        res.status(500).json({ message: "Erro ao subir imagem para o ImgBB" });
     }
 });
 
