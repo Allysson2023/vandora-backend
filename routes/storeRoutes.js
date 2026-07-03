@@ -5,6 +5,9 @@ const authMiddleware = require('../middlewares/authMiddleware');
 const bcrypt = require("bcrypt");
 const uploadLojas = require('../middlewares/uploadLojas');
 const uploadProdutos = require('../middlewares/uploadProdutos');
+const axios = require('axios'); // Adicione no topo do arquivo
+const fs = require('fs');
+const FormData = require('form-data');
 
 // Middleware de autorização otimizado
 const checkOwner = async (req, res, next) => {
@@ -22,11 +25,88 @@ const checkOwner = async (req, res, next) => {
     }
 };
 
-// 1. IMAGEM DA LOJA
-router.put('/stores/imagem', authMiddleware, uploadLojas.single('imagem'), async (req, res) => {
+router.put('/stores/:id', authMiddleware, checkOwner, async (req, res) => {
+    try {
+        const { 
+            nome, descricao, horario_abertura, horario_fechamento, 
+            facebook, instagram, meta_mensal, 
+            endereco, numero, bairro, cidade, cep, 
+            aceita_entrega, aceita_retirada, imagem // imagem aqui recebe a URL do ImgBB
+        } = req.body;
+
+        // Validações
+        if (!nome || nome.trim().length < 3) return res.status(400).json({ message: "Nome inválido" });
+        if (meta_mensal !== null && meta_mensal !== undefined && isNaN(meta_mensal)) return res.status(400).json({ message: "Meta inválida" });
+
+        // SQL de atualização dinâmico para não sobrescrever imagem se não for enviada
+        let sql = `
+            UPDATE stores SET 
+                nome = ?, descricao = ?, horario_abertura = ?, horario_fechamento = ?, 
+                facebook = ?, instagram = ?, meta_mensal = ?,
+                endereco = ?, numero = ?, bairro = ?, cidade = ?, cep = ?, 
+                aceita_entrega = ?, aceita_retirada = ?
+        `;
+        let values = [
+            nome, descricao, horario_abertura, horario_fechamento, 
+            facebook, instagram, meta_mensal,
+            endereco || null, numero || null, bairro || null, cidade || null, cep || null, 
+            aceita_entrega ? 1 : 0, aceita_retirada ? 1 : 0
+        ];
+
+        // Se uma nova URL de imagem foi enviada pelo frontend, atualizamos no banco
+        if (imagem) {
+            sql += ", imagem = ?";
+            values.push(imagem);
+        }
+
+        sql += " WHERE id = ? AND user_id = ?";
+        values.push(req.storeId, req.user.id);
+
+        await db.query(sql, values);
+
+        res.json({ message: "Loja atualizada com sucesso" });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Erro ao atualizar loja" });
+    }
+});
+
+// ROTA PARA ATUALIZAR APENAS A LOGO DA LOJA (via ImgBB)
+router.post('/upload-store-logo', authMiddleware, uploadLojas.single('image'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ message: 'Nenhuma imagem enviada' });
-        await db.query("UPDATE stores SET imagem = ? WHERE user_id = ?", [req.file.filename, req.user.id]);
+
+        // Prepara o FormData para o ImgBB
+        const form = new FormData();
+        // Aqui você pega o arquivo que o multer pegou (seja buffer ou o caminho temporário)
+        form.append('image', fs.createReadStream(req.file.path));
+
+        // Envia para o ImgBB
+        const response = await axios.post(`https://api.imgbb.com/1/upload?key=${process.env.IMGBB_API_KEY}`, form, {
+            headers: { ...form.getHeaders() }
+        });
+
+        const imageUrl = response.data.data.url;
+
+        // Apaga o arquivo temporário do servidor (ele já está na nuvem)
+        fs.unlinkSync(req.file.path);
+
+        // Retorna a URL para o frontend
+        res.json({ url: imageUrl });
+    } catch (err) {
+        console.error("Erro no upload ImgBB:", err);
+        res.status(500).json({ message: 'Erro ao subir imagem para a nuvem' });
+    }
+});
+
+
+// 1. IMAGEM DA LOJA
+router.put('/stores/imagem', authMiddleware, async (req, res) => {
+    try {
+        const { imagem_url } = req.body; // O frontend envia a URL gerada pelo ImgBB
+        if (!imagem_url) return res.status(400).json({ message: 'URL da imagem é necessária' });
+        
+        await db.query("UPDATE stores SET imagem = ? WHERE user_id = ?", [imagem_url, req.user.id]);
         res.json({ message: 'Imagem atualizada com sucesso' });
     } catch (err) {
         res.status(500).json({ message: 'Erro ao atualizar imagem' });
@@ -157,48 +237,7 @@ router.get('/stores/:id/public/products', async (req, res) => {
 });
 
 
-// ===============================
-// ATUALIZAR LOJA
-// ===============================
-router.put('/stores/:id', authMiddleware, checkOwner, async (req, res) => {
-    console.log(req.body)
-    try {
-        const { 
-            nome, descricao, horario_abertura, horario_fechamento, 
-            facebook, instagram, meta_mensal, 
-            endereco, numero, bairro, cidade, cep, 
-            aceita_entrega, aceita_retirada 
-        } = req.body;
 
-        // Validações básicas
-        if (!nome || nome.trim().length < 3) return res.status(400).json({ message: "Nome inválido" });
-        if (nome.length > 100) return res.status(400).json({ message: "Nome muito grande" });
-        if (descricao && descricao.length > 3000) return res.status(400).json({ message: "Descrição muito grande" });
-        if (meta_mensal !== null && meta_mensal !== undefined && isNaN(meta_mensal)) return res.status(400).json({ message: "Meta inválida" });
-
-        // SQL de atualização incluindo os novos campos
-        await db.query(`
-            UPDATE stores SET 
-                nome = ?, descricao = ?, horario_abertura = ?, horario_fechamento = ?, 
-                facebook = ?, instagram = ?, meta_mensal = ?,
-                endereco = ?, numero = ?, bairro = ?, cidade = ?, cep = ?, 
-                aceita_entrega = ?, aceita_retirada = ?
-            WHERE id = ? AND user_id = ?`,
-            [
-                nome, descricao, horario_abertura, horario_fechamento, 
-                facebook, instagram, meta_mensal,
-                endereco || null, numero || null, bairro || null, cidade || null, cep || null, 
-                aceita_entrega, aceita_retirada,
-                req.storeId, req.user.id
-            ]
-        );
-
-        res.json({ message: "Loja atualizada com sucesso" });
-    } catch (err) {
-        console.error(err); // Ajuda a identificar erros de SQL no seu terminal
-        res.status(500).json({ message: "Erro ao atualizar loja" });
-    }
-});
 
 // ===============================
 // DASHBOARD DA LOJA (Otimizado com Promise.all)
