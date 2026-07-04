@@ -39,8 +39,7 @@ router.get('/banners', authMiddleware, async (req, res) => {
 // Rotas Públicas (Home)
 router.get('/banners/imagens', async (req, res) => {
     try {
-        // Fazemos um JOIN com a tabela de lojas (assumindo que sua tabela se chama 'stores')
-        // Substitua 'stores' pelo nome correto da sua tabela de lojas se for diferente
+        // O JOIN abaixo busca o 'slug' na tabela de 'stores' usando o 'loja_id' do banner
         const sql = `
             SELECT b.*, s.slug as loja_slug 
             FROM banners b 
