@@ -39,7 +39,15 @@ router.get('/banners', authMiddleware, async (req, res) => {
 // Rotas Públicas (Home)
 router.get('/banners/imagens', async (req, res) => {
     try {
-        const [results] = await db.query("SELECT * FROM banners WHERE tipo = 'imagem'");
+        // Fazemos um JOIN com a tabela de lojas (assumindo que sua tabela se chama 'stores')
+        // Substitua 'stores' pelo nome correto da sua tabela de lojas se for diferente
+        const sql = `
+            SELECT b.*, s.slug as loja_slug 
+            FROM banners b 
+            LEFT JOIN stores s ON b.loja_id = s.id 
+            WHERE b.tipo = 'imagem'
+        `;
+        const [results] = await db.query(sql);
         res.json(results);
     } catch (err) {
         res.status(500).json({ error: "Erro ao buscar imagens", details: err });
