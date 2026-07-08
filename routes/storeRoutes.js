@@ -136,8 +136,9 @@ router.post('/stores', authMiddleware, uploadLojas.single('imagem'), async (req,
         await connection.beginTransaction();
 
         try {
-            const [catResult] = await connection.query("SELECT id FROM categories WHERE nome = ?", [categoria.trim()]);
-            if (catResult.length === 0) throw new Error("Categoria inválida");
+            const [catResult] = await connection.query("SELECT id FROM categorias_principais WHERE nome = ?", [categoria.trim()]);
+
+if (catResult.length === 0) throw new Error("Categoria (Departamento) inválida");
 
             const [userExists] = await connection.query("SELECT id FROM users WHERE username = ?", [username.trim().toLowerCase()]);
             if (userExists.length > 0) throw new Error("Usuário já existe");
