@@ -33,29 +33,32 @@ router.put('/stores/:id', authMiddleware, checkOwner, async (req, res) => {
             nome, descricao, horario_abertura, horario_fechamento, 
             facebook, instagram, meta_mensal, 
             endereco, numero, bairro, cidade, cep, 
-            aceita_entrega, aceita_retirada, imagem // imagem aqui recebe a URL do ImgBB
+            aceita_entrega, aceita_retirada, imagem, categoria // Adicione categoria aqui
         } = req.body;
 
-        // Validações
+        // 1. Validações básicas
         if (!nome || nome.trim().length < 3) return res.status(400).json({ message: "Nome inválido" });
-        if (meta_mensal !== null && meta_mensal !== undefined && isNaN(meta_mensal)) return res.status(400).json({ message: "Meta inválida" });
+        if (!categoria) return res.status(400).json({ message: "Categoria é obrigatória" });
 
-        // SQL de atualização dinâmico para não sobrescrever imagem se não for enviada
+        // 2. Validação da Categoria (Departamento)
+        const [catResult] = await db.query("SELECT id FROM categorias_principais WHERE nome = ?", [categoria.trim()]);
+        if (catResult.length === 0) return res.status(400).json({ message: "Categoria inválida" });
+
+        // 3. SQL de atualização dinâmico
         let sql = `
             UPDATE stores SET 
                 nome = ?, descricao = ?, horario_abertura = ?, horario_fechamento = ?, 
                 facebook = ?, instagram = ?, meta_mensal = ?,
                 endereco = ?, numero = ?, bairro = ?, cidade = ?, cep = ?, 
-                aceita_entrega = ?, aceita_retirada = ?
+                aceita_entrega = ?, aceita_retirada = ?, categoria = ?
         `;
         let values = [
             nome, descricao, horario_abertura, horario_fechamento, 
             facebook, instagram, meta_mensal,
             endereco || null, numero || null, bairro || null, cidade || null, cep || null, 
-            aceita_entrega ? 1 : 0, aceita_retirada ? 1 : 0
+            aceita_entrega ? 1 : 0, aceita_retirada ? 1 : 0, categoria.trim() // Adicione o valor aqui
         ];
 
-        // Se uma nova URL de imagem foi enviada pelo frontend, atualizamos no banco
         if (imagem) {
             sql += ", imagem = ?";
             values.push(imagem);
