@@ -5,7 +5,7 @@ const authMiddleware = require('../middlewares/authMiddleware');
 const bcrypt = require("bcrypt");
 const uploadLojas = require('../middlewares/uploadLojas');
 const uploadProdutos = require('../middlewares/uploadProdutos');
-const axios = require('axios'); // Adicione no topo do arquivo
+const axios = require('axios');
 const fs = require('fs');
 const FormData = require('form-data');
 const multer = require('multer');
@@ -116,11 +116,9 @@ router.post('/stores', authMiddleware, uploadLojas.single('imagem'), async (req,
 
         const { nome, categoria, whatsapp, username, password } = req.body;
         
-        // Mantemos a validação apenas dos campos de texto
         if (!nome || !categoria || !whatsapp || !username || !password) 
             return res.status(400).json({ message: "Preencha todos os campos" });
         
-        // Defina uma imagem padrão se nenhuma for enviada
         const nomeImagem = req.file ? req.file.filename : 'default-store.png';
 
         const gerarSlug = (texto) => {
@@ -138,7 +136,8 @@ router.post('/stores', authMiddleware, uploadLojas.single('imagem'), async (req,
         try {
             const [catResult] = await connection.query("SELECT id FROM categorias_principais WHERE nome = ?", [categoria.trim()]);
 
-if (catResult.length === 0) throw new Error("Categoria (Departamento) inválida");
+            if (catResult.length === 0) throw new Error("Categoria (Departamento) inválida");
+            const categoriaId = catResult[0].id;
 
             const [userExists] = await connection.query("SELECT id FROM users WHERE username = ?", [username.trim().toLowerCase()]);
             if (userExists.length > 0) throw new Error("Usuário já existe");
@@ -148,8 +147,8 @@ if (catResult.length === 0) throw new Error("Categoria (Departamento) inválida"
 
             // Agora usamos 'nomeImagem' que pode ser o arquivo ou o padrão
             await connection.query(
-                "INSERT INTO stores (nome, slug, categoria, imagem, whatsapp, funcionario_id, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [nome.trim(), slug, categoria.trim(), nomeImagem, whatsapp.trim(), req.user.id, userResult.insertId]
+                "INSERT INTO stores (nome, slug, categoria_id, imagem, whatsapp, funcionario_id, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [nome.trim(), slug, categoriaId, nomeImagem, whatsapp.trim(), req.user.id, userResult.insertId]
             );
 
             await connection.commit();
