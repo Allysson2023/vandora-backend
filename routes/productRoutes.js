@@ -29,6 +29,11 @@ router.post("/products", authMiddleware, async (req, res) => {
         const [storeResult] = await connection.query("SELECT id FROM stores WHERE user_id = ?", [req.user.id]);
         if (storeResult.length === 0) throw new Error("Loja não encontrada");
 
+        const [catCheck] = await connection.query("SELECT id FROM categories WHERE id = ?", [category_id]);
+if (catCheck.length === 0) {
+    throw new Error("Categoria selecionada inválida.");
+}
+
         // Agora pegamos as URLs diretamente do req.body (que o frontend envia)
         const { nome, descricao, preco, preco_antigo, estoque, category_id, variantes, destaque, imagem, imagem2, imagem3 } = req.body;
 
@@ -184,6 +189,12 @@ router.put("/products/:id", authMiddleware, async (req, res) => {
 
         const erro = validarProduto(req.body);
         if (erro) return res.status(400).json({ message: erro });
+        if (category_id) {
+    const [catCheck] = await db.query("SELECT id FROM categories WHERE id = ?", [category_id]);
+    if (catCheck.length === 0) {
+        return res.status(400).json({ message: "Categoria selecionada inválida." });
+    }
+}
 
         // Agora recebemos as URLs das imagens diretamente do req.body
         const { nome, descricao, preco, preco_antigo, estoque, category_id, destaque, imagem, imagem2, imagem3 } = req.body;
