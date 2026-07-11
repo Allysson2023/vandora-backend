@@ -29,7 +29,10 @@ router.post("/products", authMiddleware, async (req, res) => {
         const [storeResult] = await connection.query("SELECT id FROM stores WHERE user_id = ?", [req.user.id]);
         if (storeResult.length === 0) throw new Error("Loja não encontrada");
 
-        const [catCheck] = await connection.query("SELECT id FROM categories WHERE id = ?", [category_id]);
+        const { nome, descricao, preco, preco_antigo, estoque, category_id, variantes, destaque, imagem, imagem2, imagem3 } = req.body;
+
+// AGORA SIM, você pode usar category_id aqui:
+const [catCheck] = await connection.query("SELECT id FROM categories WHERE id = ?", [category_id]);
 if (catCheck.length === 0) {
     throw new Error("Categoria selecionada inválida.");
 }
