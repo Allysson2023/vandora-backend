@@ -29,16 +29,14 @@ router.post("/products", authMiddleware, async (req, res) => {
         const [storeResult] = await connection.query("SELECT id FROM stores WHERE user_id = ?", [req.user.id]);
         if (storeResult.length === 0) throw new Error("Loja não encontrada");
 
+        // --- ÚNICA EXTRAÇÃO NECESSÁRIA ---
         const { nome, descricao, preco, preco_antigo, estoque, category_id, variantes, destaque, imagem, imagem2, imagem3 } = req.body;
 
-// AGORA SIM, você pode usar category_id aqui:
-const [catCheck] = await connection.query("SELECT id FROM categories WHERE id = ?", [category_id]);
-if (catCheck.length === 0) {
-    throw new Error("Categoria selecionada inválida.");
-}
-
-        // Agora pegamos as URLs diretamente do req.body (que o frontend envia)
-        const { nome, descricao, preco, preco_antigo, estoque, category_id, variantes, destaque, imagem, imagem2, imagem3 } = req.body;
+        // --- VALIDAÇÃO AGORA FUNCIONA PORQUE CATEGORY_ID JÁ EXISTE ---
+        const [catCheck] = await connection.query("SELECT id FROM categories WHERE id = ?", [category_id]);
+        if (catCheck.length === 0) {
+            throw new Error("Categoria selecionada inválida.");
+        }
 
         const slug = nome
             .toLowerCase()
@@ -47,7 +45,6 @@ if (catCheck.length === 0) {
             .replace(/\s+/g, '-')
             .replace(/-+/g, '-');
 
-        // Inserir Produto usando as variáveis de imagem que já chegam como URLs
         const [prodResult] = await connection.query(
             `INSERT INTO products (nome, descricao, preco, preco_antigo, estoque, imagem, imagem2, imagem3, category_id, store_id, destaque, slug) 
              VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -56,7 +53,6 @@ if (catCheck.length === 0) {
 
         const productId = prodResult.insertId;
 
-        // Se houver variantes, salva elas
         if (variantes && Array.isArray(variantes)) {
             for (let v of variantes) {
                 await connection.query(
@@ -70,7 +66,7 @@ if (catCheck.length === 0) {
         res.json({ message: "Produto cadastrado com sucesso!", productId });
     } catch (err) {
         await connection.rollback(); 
-        console.error(err);
+        console.error("Erro no servidor:", err); // Log para ver o erro real
         res.status(500).json({ message: err.message || "Erro interno no servidor" });
     } finally {
         connection.release(); 
