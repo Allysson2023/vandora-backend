@@ -188,22 +188,23 @@ router.get("/products/:id", async (req, res) => {
 // 3. ATUALIZAR PRODUTO
 router.put("/products/:id", authMiddleware, async (req, res) => {
     try {
-        // Verifica se o produto existe e pertence ao usuário logado
         const [prod] = await db.query("SELECT s.user_id FROM products p JOIN stores s ON p.store_id = s.id WHERE p.id = ?", [req.params.id]);
         if (!prod.length) return res.status(404).json({ message: "Produto não encontrado" });
         if (prod[0].user_id !== req.user.id) return res.status(403).json({ message: "Sem permissão" });
 
+        // 1. EXTRAIA AS VARIÁVEIS PRIMEIRO
+        const { nome, descricao, preco, preco_antigo, estoque, category_id, destaque, imagem, imagem2, imagem3 } = req.body;
+
+        // 2. AGORA FAÇA AS VALIDAÇÕES USANDO AS VARIÁVEIS JÁ EXTRAÍDAS
         const erro = validarProduto(req.body);
         if (erro) return res.status(400).json({ message: erro });
-        if (category_id) {
-    const [catCheck] = await db.query("SELECT id FROM categories WHERE id = ?", [category_id]);
-    if (catCheck.length === 0) {
-        return res.status(400).json({ message: "Categoria selecionada inválida." });
-    }
-}
 
-        // Agora recebemos as URLs das imagens diretamente do req.body
-        const { nome, descricao, preco, preco_antigo, estoque, category_id, destaque, imagem, imagem2, imagem3 } = req.body;
+        if (category_id) {
+            const [catCheck] = await db.query("SELECT id FROM categories WHERE id = ?", [category_id]);
+            if (catCheck.length === 0) {
+                return res.status(400).json({ message: "Categoria selecionada inválida." });
+            }
+        }
 
         const novaSlug = nome
             .toLowerCase()
@@ -212,40 +213,18 @@ router.put("/products/:id", authMiddleware, async (req, res) => {
             .replace(/\s+/g, '-')
             .replace(/-+/g, '-');
 
-        // Atualização simples: salvamos exatamente o que veio do frontend
         await db.query(`
             UPDATE products SET 
-                nome = ?, 
-                descricao = ?, 
-                preco = ?, 
-                preco_antigo = ?, 
-                estoque = ?, 
-                category_id = ?, 
-                destaque = ?, 
-                slug = ?, 
-                imagem = ?, 
-                imagem2 = ?, 
-                imagem3 = ? 
+                nome = ?, descricao = ?, preco = ?, preco_antigo = ?, 
+                estoque = ?, category_id = ?, destaque = ?, slug = ?, 
+                imagem = ?, imagem2 = ?, imagem3 = ? 
             WHERE id = ?`,
-            [
-                nome, 
-                descricao, 
-                preco, 
-                preco_antigo || null, 
-                estoque, 
-                category_id || null, 
-                destaque ? 1 : 0, 
-                novaSlug, 
-                imagem, // URL da imagem 1
-                imagem2, // URL da imagem 2
-                imagem3, // URL da imagem 3
-                req.params.id
-            ]
+            [nome, descricao, preco, preco_antigo || null, estoque, category_id || null, destaque ? 1 : 0, novaSlug, imagem, imagem2, imagem3, req.params.id]
         );
 
         res.json({ message: "Produto atualizado com sucesso!" });
     } catch (err) {
-        console.error(err);
+        console.error("Erro no backend:", err);
         res.status(500).json({ message: "Erro ao atualizar produto" });
     }
 });
