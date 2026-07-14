@@ -32,6 +32,12 @@ router.post("/products", authMiddleware, async (req, res) => {
         // --- ÚNICA EXTRAÇÃO NECESSÁRIA ---
         const { nome, descricao, preco, preco_antigo, estoque, category_id, variantes, destaque, imagem, imagem2, imagem3 } = req.body;
         console.log("DEBUG CATEGORIA:", { category_id, tipo: typeof category_id });
+        const idCategoria = parseInt(category_id);
+
+if (isNaN(idCategoria)) {
+    // Retorna erro 400 (Bad Request) em vez de 500 (Server Error)
+    return res.status(400).json({ message: "ID de categoria inválido." });
+}
 
         // --- VALIDAÇÃO AGORA FUNCIONA PORQUE CATEGORY_ID JÁ EXISTE ---
         const [catCheck] = await connection.query("SELECT id FROM categories WHERE id = ?", [parseInt(category_id)]);
