@@ -20,7 +20,7 @@ async function notificarLojistaTelegram(lojaId, pedidoId, total) {
             const pId = pedidoId || "N/A";
             const vTotal = total ? total.toFixed(2) : "0.00";
             
-            const mensagem = `📢 *Vandora - Novo Pedido!*%0A%0A📦 *Pedido:* #${pId}%0A💰 *Total:* R$ ${vTotal}`;
+            const mensagem = `📢 Vandora - Novo Pedido!%0A%0A📦 Pedido: ${pedidoId}%0A💰 Total: R$ ${total.toFixed(2)}`;
             const url = `https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${mensagem}&parse_mode=Markdown`;
             
             await fetch(url);
