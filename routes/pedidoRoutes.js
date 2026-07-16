@@ -4,6 +4,24 @@ const db = require("../config/db"); // Certifique-se que este arquivo exporta a 
 const authMiddleware = require("../middlewares/authMiddleware");
 const { getIo } = require("../utils/socket");
 
+async function notificarLojistaTelegram(lojaId, pedidoId, total) {
+    const token = "8567112639:AAECOZLv0J0Uw5mA-ZPGhRndgBdGiQp1_lw";
+    try {
+        // 1. Busca o Chat ID do lojista no banco
+        const [lojas] = await db.query("SELECT telegram_chat_id FROM stores WHERE id = ?", [lojaId]);
+        
+        // 2. Se a loja tiver um Chat ID cadastrado, envia a mensagem
+        if (lojas.length > 0 && lojas[0].telegram_chat_id) {
+            const chatId = lojas[0].telegram_chat_id;
+            const mensagem = `📢 *Vandora - Novo Pedido!* %0A%0A📦 Pedido #${pedidoId}%0A💰 Total: R$ ${total.toFixed(2)}`;
+            const url = `https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${mensagem}&parse_mode=Markdown`;
+            
+            await fetch(url);
+        }
+    } catch (err) {
+        console.error("Erro ao enviar Telegram:", err);
+    }
+}
 
 // 1. ROTA: CRIAÇÃO DE PEDIDOS
 router.post("/pedidos", authMiddleware, async (req, res) => {
@@ -100,6 +118,8 @@ router.post("/pedidos", authMiddleware, async (req, res) => {
 
             await connection.commit();
             connection.release();
+
+            notificarLojistaTelegram(lojaIdInt, pedido_id, totalFinal);
 
             const io = getIo();
             const sala = `loja_${lojaIdInt}`;
