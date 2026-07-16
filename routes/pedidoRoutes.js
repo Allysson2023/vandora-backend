@@ -6,22 +6,15 @@ const { getIo } = require("../utils/socket");
 
 async function notificarLojistaTelegram(lojaId, pedidoId, total) {
     const token = "8567112639:AAECOZLv0J0Uw5mA-ZPGhRndgBdGiQp1_lw";
-    
-    // DEBUG: Vamos ver o que está chegando aqui
-    console.log("🔍 [DEBUG] Recebido na função:", { lojaId, pedidoId, total });
-
     try {
         const [lojas] = await db.query("SELECT telegram_chat_id FROM stores WHERE id = ?", [lojaId]);
         
         if (lojas.length > 0 && lojas[0].telegram_chat_id) {
             const chatId = lojas[0].telegram_chat_id;
             
-            // Garantir que os valores existam
-            const pId = pedidoId || "N/A";
-            const vTotal = total ? total.toFixed(2) : "0.00";
+            const mensagem = "Vandora - Novo Pedido! Pedido: " + pedidoId + " Valor: R$ " + total.toFixed(2);
             
-            const mensagem = `📢 Vandora - Novo Pedido!%0A%0A📦 Pedido: ${pedidoId}%0A💰 Total: R$ ${total.toFixed(2)}`;
-            const url = `https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${mensagem}&parse_mode=Markdown`;
+            const url = `https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(mensagem)}`;
             
             await fetch(url);
         }
