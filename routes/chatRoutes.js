@@ -91,9 +91,27 @@ router.get("/loja/:lojaId", authMiddleware, checkStoreOwner, async (req, res) =>
 // ==========================================
 router.get("/:chatId", authMiddleware, checkChatAccess, async (req, res) => {
     try {
-        const [result] = await db.query("SELECT c.*, s.nome AS loja_nome FROM chats c INNER JOIN stores s ON s.id = c.loja_id WHERE c.id = ?", [req.params.chatId]);
-        res.json(result[0]);
+        // MUDAMOS A QUERY AQUI PARA FAZER O JOIN COM A TABELA USERS
+        const sql = `
+            SELECT c.*, s.nome AS loja_nome, u.nome AS cliente_nome 
+            FROM chats c 
+            INNER JOIN stores s ON s.id = c.loja_id 
+            INNER JOIN users u ON u.id = c.cliente_id 
+            WHERE c.id = ?
+        `;
+        const [result] = await db.query(sql, [req.params.chatId]);
+        
+        if (result.length === 0) return res.status(404).json({ message: "Chat não encontrado" });
+
+        // Transformamos o resultado para ficar no formato que seu frontend espera
+        const chatData = {
+            ...result[0],
+            cliente: { nome: result[0].cliente_nome } // Criamos o objeto cliente que seu frontend chama
+        };
+        
+        res.json(chatData);
     } catch (err) {
+        console.error("Erro ao buscar dados do chat:", err);
         res.status(500).json({ error: "Erro interno ao buscar dados do chat" });
     }
 });
