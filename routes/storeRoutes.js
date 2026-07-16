@@ -33,7 +33,8 @@ router.put('/stores/:id', authMiddleware, checkOwner, async (req, res) => {
             nome, descricao, horario_abertura, horario_fechamento, 
             facebook, instagram, meta_mensal, 
             endereco, numero, bairro, cidade, cep, 
-            aceita_entrega, aceita_retirada, imagem, categoria // Adicione categoria aqui
+            aceita_entrega, aceita_retirada, imagem, categoria ,
+            telegram_chat_id
         } = req.body;
 
         // 1. Validações básicas
@@ -50,13 +51,15 @@ router.put('/stores/:id', authMiddleware, checkOwner, async (req, res) => {
                 nome = ?, descricao = ?, horario_abertura = ?, horario_fechamento = ?, 
                 facebook = ?, instagram = ?, meta_mensal = ?,
                 endereco = ?, numero = ?, bairro = ?, cidade = ?, cep = ?, 
-                aceita_entrega = ?, aceita_retirada = ?, categoria = ?
+                aceita_entrega = ?, aceita_retirada = ?, categoria = ?,
+                telegram_chat_id = ?
         `;
         let values = [
             nome, descricao, horario_abertura, horario_fechamento, 
             facebook, instagram, meta_mensal,
             endereco || null, numero || null, bairro || null, cidade || null, cep || null, 
-            aceita_entrega ? 1 : 0, aceita_retirada ? 1 : 0, categoria.trim() // Adicione o valor aqui
+            aceita_entrega ? 1 : 0, aceita_retirada ? 1 : 0, categoria.trim(),
+            telegram_chat_id || null
         ];
 
         if (imagem) {
