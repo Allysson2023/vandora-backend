@@ -348,17 +348,12 @@ router.get("/loja/faturamento-hoje", authMiddleware, async (req, res) => {
 });
 
 // ==========================================
-// 1. LISTAR TODOS OS BAIRROS + PREÇO DA LOJA
+// 1. LISTAR TODOS OS BAIRROS + PREÇO DA LOJA (COM ID NA URL)
 // ==========================================
-router.get("/loja/bairros-frete", authMiddleware, async (req, res) => {
+router.get("/loja/:id/bairros-frete", authMiddleware, async (req, res) => {
     try {
-        const lojaId = req.user.loja_id; // Pega a loja do lojista logado
+        const lojaId = req.params.id; // Pega o ID diretamente da URL
 
-        if (!lojaId) {
-            return res.status(400).json({ error: "Usuário não está associado a nenhuma loja." });
-        }
-
-        // Busca todos os bairros oficiais e faz um LEFT JOIN com os preços que a loja já cadastrou
         const sql = `
             SELECT 
                 b.id AS bairro_id,
@@ -378,22 +373,17 @@ router.get("/loja/bairros-frete", authMiddleware, async (req, res) => {
 });
 
 // ==========================================
-// 2. SALVAR OU ATUALIZAR OS PREÇOS DA LOJA
+// 2. SALVAR OU ATUALIZAR OS PREÇOS DA LOJA (COM ID NA URL)
 // ==========================================
-router.post("/loja/bairros-frete", authMiddleware, async (req, res) => {
+router.post("/loja/:id/bairros-frete", authMiddleware, async (req, res) => {
     try {
-        const lojaId = req.user.loja_id;
+        const lojaId = req.params.id; // Pega o ID diretamente da URL
         const { fretes } = req.body;
-
-        if (!lojaId) {
-            return res.status(400).json({ error: "Usuário não está associado a nenhuma loja." });
-        }
 
         if (!Array.isArray(fretes)) {
             return res.status(400).json({ error: "Formato de dados inválido." });
         }
 
-        // Loop para atualizar ou inserir cada bairro enviado pela loja
         for (const item of fretes) {
             const { bairro, valor_entrega } = item;
             const valorNumerico = parseFloat(valor_entrega) || 0;
@@ -404,7 +394,6 @@ router.post("/loja/bairros-frete", authMiddleware, async (req, res) => {
                 ON DUPLICATE KEY UPDATE valor_entrega = VALUES(valor_entrega)
             `;
             
-            // Nota: Para o ON DUPLICATE funcionar perfeitamente, o ideal é ter uma UNIQUE KEY em (loja_id, bairro)
             await db.query(sql, [lojaId, bairro, valorNumerico]);
         }
 
