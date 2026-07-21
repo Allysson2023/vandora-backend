@@ -404,5 +404,28 @@ router.post("/loja/:id/bairros-frete", authMiddleware, async (req, res) => {
     }
 });
 
+// Rota pública para o carrinho ver o frete dos bairros da loja
+router.get("/stores/:id/public/bairros-frete", async (req, res) => {
+    try {
+        const lojaId = req.params.id;
+
+        // Busca todos os bairros e a taxa que ESSA loja cadastrou (se não cadastrou, vem null)
+        const sql = `
+            SELECT 
+                b.id AS bairro_id,
+                b.nome AS bairro_nome,
+                l.valor_entrega
+            FROM bairros_fortaleza b
+            LEFT JOIN loja_bairros l ON l.bairro = b.nome AND l.loja_id = ?
+            ORDER BY b.nome ASC
+        `;
+
+        const [bairros] = await db.query(sql, [lojaId]);
+        res.json(bairros);
+    } catch (err) {
+        console.error("Erro ao buscar fretes públicos:", err);
+        res.status(500).json({ error: "Erro interno no servidor" });
+    }
+});
 
 module.exports = router;
