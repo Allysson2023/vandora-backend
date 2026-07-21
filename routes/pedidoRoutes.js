@@ -78,7 +78,8 @@ router.post("/pedidos", authMiddleware, async (req, res) => {
 
         // 3. Cálculos Finais
         const taxaServico = totalCalculado * 0.03; // 3%
-        const totalFinal = (totalCalculado - descontoAplicado) + taxaServico;
+        const valorFrete = tipoPedido === "entrega" ? Number(dadosEntrega.valor_frete || 0) : 0;
+        const totalFinal = (totalCalculado - descontoAplicado) + taxaServico + valorFrete;
 
         const connection = await db.getConnection();
         await connection.beginTransaction();
@@ -87,10 +88,10 @@ router.post("/pedidos", authMiddleware, async (req, res) => {
             // INSERT agora incluindo 'desconto'
             const sqlPedido = `
                 INSERT INTO pedidos (
-                    usuario_id, loja_id, total, taxa_servico, desconto, total_final,
+                    usuario_id, loja_id, total, taxa_servico, desconto, frete, total_final,
                     status, tipo_pedido, nome_cliente, endereco, numero, bairro, 
                     pagamento, cpf, observacao
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?, ?, ?, ?)
             `;
 
             const [result] = await connection.query(sqlPedido, [
@@ -99,6 +100,7 @@ router.post("/pedidos", authMiddleware, async (req, res) => {
                 totalCalculado,
                 taxaServico,
                 descontoAplicado, // Valor do desconto calculado
+                valorFrete,
                 totalFinal,       // Total final após desconto
                 "AGUARDANDO_CONFIRMACAO", 
                 tipoPedido, 
