@@ -347,7 +347,73 @@ router.get("/loja/faturamento-hoje", authMiddleware, async (req, res) => {
     }
 });
 
+// ==========================================
+// 1. LISTAR TODOS OS BAIRROS + PREÇO DA LOJA
+// ==========================================
+router.get("/loja/bairros-frete", authMiddleware, async (req, res) => {
+    try {
+        const lojaId = req.user.loja_id; // Pega a loja do lojista logado
 
+        if (!lojaId) {
+            return res.status(400).json({ error: "Usuário não está associado a nenhuma loja." });
+        }
+
+        // Busca todos os bairros oficiais e faz um LEFT JOIN com os preços que a loja já cadastrou
+        const sql = `
+            SELECT 
+                b.id AS bairro_id,
+                b.nome AS bairro_nome,
+                IFNULL(l.valor_entrega, 0.00) AS valor_entrega
+            FROM bairros_fortaleza b
+            LEFT JOIN loja_bairros l ON l.bairro = b.nome AND l.loja_id = ?
+            ORDER BY b.nome ASC
+        `;
+
+        const [bairros] = await db.query(sql, [lojaId]);
+        res.json(bairros);
+    } catch (err) {
+        console.error("Erro ao buscar bairros de frete:", err);
+        res.status(500).json({ error: "Erro interno no servidor" });
+    }
+});
+
+// ==========================================
+// 2. SALVAR OU ATUALIZAR OS PREÇOS DA LOJA
+// ==========================================
+router.post("/loja/bairros-frete", authMiddleware, async (req, res) => {
+    try {
+        const lojaId = req.user.loja_id;
+        const { fretes } = req.body;
+
+        if (!lojaId) {
+            return res.status(400).json({ error: "Usuário não está associado a nenhuma loja." });
+        }
+
+        if (!Array.isArray(fretes)) {
+            return res.status(400).json({ error: "Formato de dados inválido." });
+        }
+
+        // Loop para atualizar ou inserir cada bairro enviado pela loja
+        for (const item of fretes) {
+            const { bairro, valor_entrega } = item;
+            const valorNumerico = parseFloat(valor_entrega) || 0;
+
+            const sql = `
+                INSERT INTO loja_bairros (loja_id, bairro, valor_entrega)
+                VALUES (?, ?, ?)
+                ON DUPLICATE KEY UPDATE valor_entrega = VALUES(valor_entrega)
+            `;
+            
+            // Nota: Para o ON DUPLICATE funcionar perfeitamente, o ideal é ter uma UNIQUE KEY em (loja_id, bairro)
+            await db.query(sql, [lojaId, bairro, valorNumerico]);
+        }
+
+        res.json({ message: "Fretes atualizados com sucesso!" });
+    } catch (err) {
+        console.error("Erro ao salvar fretes:", err);
+        res.status(500).json({ error: "Erro interno no servidor" });
+    }
+});
 
 
 module.exports = router;
