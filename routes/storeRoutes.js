@@ -116,7 +116,7 @@ router.put('/stores/imagem', authMiddleware, async (req, res) => {
 });
 
 // 2. CRIAR LOJA (Uso de Transação para segurança)
-router.post('/stores', authMiddleware, uploadLojas.single('imagem'), async (req, res) => {
+router.post('/stores', authMiddleware, async (req, res) => {
     try {
         if (req.user.tipo !== "funcionario") return res.status(403).json({ message: "Apenas funcionários podem criar lojas" });
 
@@ -125,7 +125,7 @@ router.post('/stores', authMiddleware, uploadLojas.single('imagem'), async (req,
         if (!nome || !categoria || !whatsapp || !username || !password) 
             return res.status(400).json({ message: "Preencha todos os campos" });
         
-        const nomeImagem = req.file ? req.file.filename : 'default-store.png';
+        const nomeImagem = 'default-store.png';
 
         const gerarSlug = (texto) => {
             return texto.toString().toLowerCase().trim()
