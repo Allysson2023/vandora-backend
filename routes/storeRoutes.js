@@ -116,7 +116,7 @@ router.put('/stores/imagem', authMiddleware, async (req, res) => {
 });
 
 // 2. CRIAR LOJA (Uso de Transação para segurança)
-router.post('/stores', authMiddleware, async (req, res) => {
+router.post('/stores', authMiddleware, upload.none(), async (req, res) => {
     try {
         if (req.user.tipo !== "funcionario") return res.status(403).json({ message: "Apenas funcionários podem criar lojas" });
 
