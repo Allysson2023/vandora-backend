@@ -34,7 +34,8 @@ router.put('/stores/:id', authMiddleware, checkOwner, async (req, res) => {
             facebook, instagram, meta_mensal, 
             endereco, numero, bairro, cidade, cep, 
             aceita_entrega, aceita_retirada, imagem, categoria ,
-            telegram_chat_id, chave_pix, tipo_chave_pix
+            telegram_chat_id, chave_pix, tipo_chave_pix,
+            pix_nome, pix_banco
         } = req.body;
 
         // 1. Validações básicas
@@ -52,14 +53,15 @@ router.put('/stores/:id', authMiddleware, checkOwner, async (req, res) => {
                 facebook = ?, instagram = ?, meta_mensal = ?,
                 endereco = ?, numero = ?, bairro = ?, cidade = ?, cep = ?, 
                 aceita_entrega = ?, aceita_retirada = ?, categoria = ?,
-                telegram_chat_id = ?, chave_pix = ?, tipo_chave_pix = ?
+                telegram_chat_id = ?, chave_pix = ?, tipo_chave_pix = ?,
+                pix_nome = ?, pix_banco = ?
         `;
         let values = [
             nome, descricao, horario_abertura, horario_fechamento, 
             facebook, instagram, meta_mensal,
             endereco || null, numero || null, bairro || null, cidade || null, cep || null, 
             aceita_entrega ? 1 : 0, aceita_retirada ? 1 : 0, categoria.trim(),
-            telegram_chat_id || null, chave_pix || null, tipo_chave_pix || null,
+            telegram_chat_id || null, chave_pix || null, tipo_chave_pix || null,pix_nome || null, pix_banco || null,
         ];
 
         if (imagem) {
@@ -203,7 +205,7 @@ router.get('/stores', async (req, res) => {
 // 5. LOJA PÚBLICA e BUSCA LOJA DO DONO (Simplificados)
 router.get('/stores/:id/public', async (req, res) => {
     try {
-        const [rows] = await db.query("SELECT id, nome, descricao, imagem, categoria, whatsapp, facebook, instagram, horario_abertura, horario_fechamento, chave_pix, tipo_chave_pix FROM stores WHERE id = ?", [req.params.id]);
+        const [rows] = await db.query("SELECT id, nome, descricao, imagem, categoria, whatsapp, facebook, instagram, horario_abertura, horario_fechamento, chave_pix, tipo_chave_pix, pix_nome, pix_banco FROM stores WHERE id = ?", [req.params.id]);
         if (rows.length === 0) return res.status(404).json({ message: "Loja não encontrada" });
         res.json(rows[0]);
     } catch (err) { res.status(500).json({ message: "Erro no servidor" }); }
@@ -213,7 +215,7 @@ router.get('/stores/:id/public', async (req, res) => {
 router.get('/stores/slug/:slug', async (req, res) => {
     try {
         const [rows] = await db.query(
-            "SELECT id, nome, descricao, imagem, categoria, whatsapp, facebook, instagram, horario_abertura, horario_fechamento, chave_pix, tipo_chave_pix FROM stores WHERE slug = ?", 
+            "SELECT id, nome, descricao, imagem, categoria, whatsapp, facebook, instagram, horario_abertura, horario_fechamento, chave_pix, tipo_chave_pix, pix_nome, pix_banco FROM stores WHERE slug = ?", 
             [req.params.slug]
         );
         if (rows.length === 0) return res.status(404).json({ message: "Loja não encontrada" });
